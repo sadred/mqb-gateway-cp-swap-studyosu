@@ -1,0 +1,32 @@
+# derleme / ortam
+.build-venv/
+build/
+dist/
+*.spec
+__pycache__/
+*.py[cod]
+studyo_ayarlar.json
+
+# üretilen çıktılar
+cikti/
+*.patched.bin
+*.eng.bin
+*.swap.bin
+*.cleared.bin
+signature_*.bin
+fsc_*.fsc
+*.private.pem
+*.public.pem
+swap_rsa*.json
+
+# dump'lar ve firmware ASLA repoya girmez
+*.frf
+*.odx
+*.odx-f
+*.pdx
+*.bin
+*.raw
+CodeFlash*
+DataFlash*
+Uflash*
+!motor/*.py
