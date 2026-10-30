@@ -22,8 +22,12 @@ gerekmez. Program internete **bağlanmaz**, hiçbir şey indirmez.
 | **1 · Dump İncele** | Otomatik tarama (isim + boyut doğrulaması) veya elle seçim; 12 CP bankası tablosu (`BOŞ`/`DOLU (she\|plain)`), SWaP özeti, ham rapor |
 | **2 · CP Bağla** | `patch-cflash` (hibrit KSCHUTZ kancası + App CRC-16) + `set-cp-key` (16 baytlık düz IKA); 95640 EEPROM maske atlaması, banka boşaltma |
 | **3 · Engineering Mode** | `patch-engineering` — Uflash RSA-free FBL + CCP erişimi + RAM-Loader; `--restore-stock` ile geri alma |
-| **4 · RSA & SWaP** | `gen-rsa-key` · `set-rsa-key` (SWaP/FBL/ikisi) · `sign-fsc` · `sign-odx` |
+| **4 · RSA & SWaP** | `gen-rsa-key` · `set-rsa-key` (SWaP/FBL/ikisi) · `sign-fsc` (VIN + **VCRN**) · `sign-odx` |
 | **5 · Referans** | 12 banka referans tablosu ve adım adım rehber (motorun kendi dokümanı) |
+
+Her bölümün altında **sonuç etiketi** vardır (✔ üretildi / ✘ sebep), yani ne olduğu günlüğe bakmadan
+görünür. `sign-fsc` için **VCRN zorunludur**: alanı elle doldur (10 hex, örn. `0102030405`) veya
+DataFlash dump'ı varsa **Oku** düğmesiyle DID `0x3C03` değerini çek.
 
 Her düğme/alan üzerine gelindiğinde **Türkçe açıklama** gösterir.
 

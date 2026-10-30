@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -124,8 +124,9 @@ def run_engine(tokens: list[str], timeout: int | None = None) -> tuple[int, str]
             rc = ns.func(ns) or 0
     except SystemExit as exc:
         rc = int(exc.code or 0)
-    except Exception:  # noqa: BLE001
-        buf.write("\n" + traceback.format_exc(limit=6))
+    except Exception as exc:  # noqa: BLE001
+        buf.write(f"\n✘ SEBEP: {exc}\n")
+        buf.write(traceback.format_exc(limit=6))
         rc = 1
     return rc, buf.getvalue()
 
@@ -583,6 +584,8 @@ class Studio(tk.Frame):
         bg.grid(row=0, column=2)
         tip(bg, "Yeni RSA-1024 (açık üs e=3) anahtar çifti üretir. Bu anahtar gateway'e gömülür ve "
                 "SWaP/FeC sertifikalarını imzalamak için kullanılır. Anahtarı kaybetme — geri alınamaz.")
+        self.lbl_41 = ttk.Label(k, text="henüz anahtar üretilmedi", foreground="#8b949e")
+        self.lbl_41.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4b modulus gömme
         m = ttk.LabelFrame(f, text=" 4.2 · Kendi açık anahtarını gateway'e göm (SWaP / FBL modulus) ",
@@ -610,10 +613,18 @@ class Studio(tk.Frame):
             rb = ttk.Radiobutton(row, text=txt, value=val, variable=self.v_target)
             rb.pack(side="left", padx=(10, 0))
             tip(rb, hint)
+        self.v_rsa_ignore = tk.BooleanVar(value=False)
+        cb_rsa = ttk.Checkbutton(m, text="Girdi CRC hatasını yok say", variable=self.v_rsa_ignore)
+        cb_rsa.grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        tip(cb_rsa, "CodeFlash'taki App CRC-16 (@0x0000C21C) uyuşmazsa bile devam eder ve CRC aralık "
+                    "sayacını onarır. Dump kısmen bozuksa gerekebilir; sonucu cihaza yazmadan önce doğrula.")
         bm = ttk.Button(m, text="Modulus'u göm", command=self._do_setkey)
-        bm.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        bm.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
         tip(bm, "Açık anahtarı CodeFlash'a ve DataFlash SWaP önbelleğine yazar (CRC-32 yeniden hesaplanır, "
                 "VCRN korunur). Çıktı: CodeFlash.swap.bin + DataFlash.swap.bin.")
+        self.lbl_42 = ttk.Label(m, text="CodeFlash + DataFlash dump'ı gerekir (1. sekme)",
+                                foreground="#8b949e")
+        self.lbl_42.grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4c FSC imzalama
         s = ttk.LabelFrame(f, text=" 4.3 · SWaP / FeC (FSC) sertifikası imzala ", padding=8)
@@ -632,12 +643,25 @@ class Studio(tk.Frame):
         tip(ev, "17 karakterlik şasi numarası. Boş bırakılırsa sertifika VIN'siz (joker) üretilir.")
         self.v_novin = tk.BooleanVar(value=False)
         cbv = ttk.Checkbutton(s, text="VIN alanını sıfırla (joker)", variable=self.v_novin)
-        cbv.grid(row=2, column=1, sticky="w", padx=4)
+        cbv.grid(row=3, column=1, sticky="w", padx=4)
         tip(cbv, "Sertifikadaki 18 baytlık VIN alanını tamamen sıfırlar; sertifika her araçta geçerli olur.")
+        ttk.Label(s, text="VCRN").grid(row=2, column=0, sticky="w")
+        self.v_vcrn = tk.StringVar()
+        evc = ttk.Entry(s, textvariable=self.v_vcrn, width=16)
+        evc.grid(row=2, column=1, sticky="w", padx=4)
+        tip(evc, "Gateway'in 5 baytlık VCRN'i (10 hex karakter, örn. 01 02 03 04 05). Sertifikaya gömülür ve "
+                 "araca özeldir; yanlış VCRN ile sertifika araçta geçersiz olur.\n"
+                 "DataFlash dump'ı varsa 'Oku' düğmesi DID 0x3C03 değerini oradan çıkarır.")
+        bv = ttk.Button(s, text="Oku", width=6, command=self._read_vcrn)
+        bv.grid(row=2, column=2, sticky="w")
+        tip(bv, "DataFlash dump'ındaki SWaP önbelleğinden VCRN'i okur (offset 0xDC0C).")
         bfs = ttk.Button(s, text="FSC imzala", command=self._do_fsc)
-        bfs.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        bfs.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
         tip(bfs, "RIPEMD-160 + RSA-1024 (e=3) ile 171 baytlık VAG SWaP FSC v2 sertifikası üretir. "
-                 "VCRN DataFlash'tan otomatik okunur. Çıktı: fsc_<fec>.fsc")
+                 "VCRN alanı boşsa DataFlash dump'ından okunur. Çıktı: fsc_<fec>.fsc")
+        self.lbl_43 = ttk.Label(s, text="anahtar (4.1) + FeC + VCRN gerekir",
+                                foreground="#8b949e")
+        self.lbl_43.grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4d ODX imzalama
         o = ttk.LabelFrame(f, text=" 4.4 · Firmware (.odx) imzala — <FW-SIGNATURE> ", padding=8)
@@ -655,6 +679,8 @@ class Studio(tk.Frame):
         bod.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
         tip(bod, "SHA-1 + RSA-1024 (e=3) ile 128 baytlık imza üretir (FBL açık anahtarı senin anahtarın "
                  "olmalı). Çıktı: signature_<dosya>.bin")
+        self.lbl_44 = ttk.Label(o, text="anahtar (4.1) + firmware gerekir", foreground="#8b949e")
+        self.lbl_44.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
     # ══════════════════════════════ 5 · REFERANS
     def _build_ref(self) -> None:
@@ -707,6 +733,11 @@ class Studio(tk.Frame):
 
     # ── günlük
     def _log(self, text: str, tag: str = "info") -> None:
+        """Günlüğe yazar. Arka plan iş parçacığından çağrılırsa kuyruğa bırakır
+        (Tk widget'larına yalnız ana iş parçacığından dokunulabilir)."""
+        if threading.current_thread() is not threading.main_thread():
+            self.queue.put(("log", (text, tag)))
+            return
         self.log.configure(state="normal")
         self.log.insert("end", text.rstrip() + "\n", tag)
         self.log.see("end")
@@ -715,6 +746,21 @@ class Studio(tk.Frame):
     def _log_block(self, text: str, tag: str = "dim") -> None:
         for line in (text or "").splitlines():
             self._log(line, tag)
+
+    def _set_sum(self, text: str) -> None:
+        if threading.current_thread() is not threading.main_thread():
+            self.queue.put(("sum", text))
+            return
+        self.lbl_sum.configure(text=text)
+
+    def _set_lbl(self, name: str, text: str, ok: bool = True) -> None:
+        """Sekme içi sonuç etiketi (4.1/4.2/4.3/4.4)."""
+        if threading.current_thread() is not threading.main_thread():
+            self.queue.put(("lbl", (name, text, ok)))
+            return
+        lbl = getattr(self, f"lbl_{name}", None)
+        if lbl is not None:
+            lbl.configure(text=text, foreground="#1f8f3d" if ok else "#b3261e")
 
     # ── iş kuyruğu
     def _pump(self) -> None:
@@ -725,6 +771,15 @@ class Studio(tk.Frame):
                     self._log(payload[0], payload[1])
                 elif kind == "status":
                     self.v_status.set(payload)
+                elif kind == "sum":
+                    self.lbl_sum.configure(text=payload)
+                elif kind == "keyin":
+                    self.v_keyin.set(payload)
+                elif kind == "lbl":
+                    name, text, ok = payload
+                    lbl = getattr(self, f"lbl_{name}", None)
+                    if lbl is not None:
+                        lbl.configure(text=text, foreground="#1f8f3d" if ok else "#b3261e")
                 elif kind == "done":
                     self.busy = False
                     self._set_buttons(True)
@@ -772,6 +827,26 @@ class Studio(tk.Frame):
 
     def _rand_key(self) -> None:
         self.v_key.set(random_ika())
+
+    def _read_vcrn(self) -> None:
+        """VCRN'i DataFlash dump'ından okur (SWaP önbelleği 0xDC0C)."""
+        df = self._path(self.f_dflash)
+        if df is None:
+            messagebox.showwarning(APP_SHORT, "Önce 1. sekmede DataFlash dump'ını seç.")
+            return
+        eng = get_engine()
+        try:
+            sw = eng.analyze_dflash_swap(df.read_bytes())
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(APP_SHORT, f"DataFlash okunamadı:\n{exc}")
+            return
+        vcrn = (sw.vcrn or "").replace(" ", "")
+        if not vcrn:
+            messagebox.showwarning(APP_SHORT, "Dump içinde VCRN bulunamadı (SWaP önbelleği boş olabilir).")
+            return
+        self.v_vcrn.set(vcrn)
+        self._log(f"  VCRN DataFlash'tan okundu: {vcrn}", "ok")
+        self._set_lbl("43", f"VCRN okundu: {vcrn}", True)
 
     def _path(self, var: tk.StringVar) -> Path | None:
         raw = var.get().strip().strip('"')
@@ -888,7 +963,7 @@ class Studio(tk.Frame):
                 except Exception as exc:  # noqa: BLE001
                     self.queue.put(("log", (f"✘ Uflash okunamadı: {exc}", "err")))
             self.queue.put(("status", "İnceleme bitti."))
-            self.lbl_sum.configure(text="  ·  ".join(summary_bits))
+            self._set_sum("  ·  ".join(summary_bits))
             self.queue.put(("log", ("✔ inceleme tamam (salt okuma, hiçbir dosya değişmedi)", "ok")))
 
         self._run_bg(job, "İnceleniyor")
@@ -929,16 +1004,19 @@ class Studio(tk.Frame):
         out.mkdir(parents=True, exist_ok=True)
         cf_out = out / "CodeFlash.patched.bin"
         df_out = out / "DataFlash.patched.bin"
+        # Tk değişkenleri yalnız ana iş parçacığında okunabilir → şimdi kopyala
+        bypass, global_plain, ignore_crc = (self.v_bypass.get(), self.v_global.get(),
+                                            self.v_ignore.get())
 
         def job():
             self._log("══ CP bağlama ══", "head")
             self._log(f"  bankalar: {', '.join('#' + str(b) for b in banks)}", "dim")
             tok = ["patch-cflash", "-i", str(cf), "-o", str(cf_out)]
-            if self.v_bypass.get():
+            if bypass:
                 tok.append("--bypass-eeprom-mask")
-            if self.v_global.get():
+            if global_plain:
                 tok.append("--global-plain")
-            if self.v_ignore.get():
+            if ignore_crc:
                 tok.append("--ignore-input-crc")
             rc, out1 = run_engine(tok)
             self._log_block(out1, "dim" if rc == 0 else "err")
@@ -1007,6 +1085,8 @@ class Studio(tk.Frame):
         out.mkdir(parents=True, exist_ok=True)
         cf_out = out / "CodeFlash.eng.bin"
         uf_out = out / "Uflash.eng.bin"
+        # Tk değişkenlerini ana iş parçacığında oku
+        restore, ignore_crc = self.v_eng_restore.get(), self.v_eng_ignore.get()
 
         def job():
             self._log("══ Engineering Mode ══", "head")
@@ -1015,9 +1095,9 @@ class Studio(tk.Frame):
                 tok += ["--cflash-in", str(cf), "--cflash-out", str(cf_out)]
             if uf:
                 tok += ["--uflash-in", str(uf), "--uflash-out", str(uf_out)]
-            if self.v_eng_restore.get():
+            if restore:
                 tok.append("--restore-stock")
-            if self.v_eng_ignore.get():
+            if ignore_crc:
                 tok.append("--ignore-input-crc")
             rc, out1 = run_engine(tok)
             self._log_block(out1, "dim" if rc == 0 else "err")
@@ -1054,15 +1134,18 @@ class Studio(tk.Frame):
 
         def job():
             self._log("══ RSA-1024 (e=3) anahtar üretimi ══", "head")
+            self._set_lbl("41", "üretiliyor... (birkaç saniye)", True)
             rc, out = run_engine(["gen-rsa-key", "-o", str(p)])
             self._log_block(out, "dim" if rc == 0 else "err")
             if rc == 0:
                 for f in sorted(p.parent.glob(p.stem.replace(".json", "") + "*")):
-                    self.queue.put(("log", (f"  • {f.name}  ({fmt_size(f.stat().st_size)})", "dim")))
-                self.queue.put(("log", (f"✔ anahtar üretildi: {p}", "ok")))
-                self.v_keyin.set(str(p))
+                    self._log(f"  • {f.name}  ({fmt_size(f.stat().st_size)})", "dim")
+                self._log(f"✔ anahtar üretildi: {p}", "ok")
+                self.queue.put(("keyin", str(p)))
+                self._set_lbl("41", f"✔ üretildi: {p.name} · 4.2/4.3 bu anahtarı kullanır", True)
             else:
-                self.queue.put(("log", (f"✘ anahtar üretilemedi (rc={rc})", "err")))
+                self._log(f"✘ anahtar üretilemedi (rc={rc})", "err")
+                self._set_lbl("41", f"✘ üretilemedi (rc={rc}) — günlüğe bak", False)
 
         self._run_bg(job, "Anahtar üretiliyor (birkaç saniye)")
 
@@ -1077,16 +1160,24 @@ class Studio(tk.Frame):
         cf_out = out / "CodeFlash.swap.bin"
         df_out = out / "DataFlash.swap.bin"
         target = self.v_target.get()
+        rsa_ignore = self.v_rsa_ignore.get()
 
         def job():
             self._log(f"══ RSA modulus gömme (hedef: {target}) ══", "head")
-            rc, out1 = run_engine(["set-rsa-key", "-k", str(keyf),
-                                   "--cflash-in", str(cf), "--cflash-out", str(cf_out),
-                                   "--dflash-in", str(df), "--dflash-out", str(df_out),
-                                   "--target", target])
+            self._set_lbl("42", "işleniyor...", True)
+            tok = ["set-rsa-key", "-k", str(keyf),
+                   "--cflash-in", str(cf), "--cflash-out", str(cf_out),
+                   "--dflash-in", str(df), "--dflash-out", str(df_out),
+                   "--target", target]
+            if rsa_ignore:
+                tok.append("--ignore-input-crc")
+            rc, out1 = run_engine(tok)
             self._log_block(out1, "dim" if rc == 0 else "err")
             if rc != 0:
-                self.queue.put(("log", (f"✘ modulus gömülemedi (rc={rc})", "err")))
+                hint = (" · 'Girdi CRC hatasını yok say' seçeneğini dene"
+                        if "ignore-input-crc" in out1 else "")
+                self._log(f"✘ modulus gömülemedi (rc={rc})", "err")
+                self._set_lbl("42", f"✘ gömülemedi (rc={rc}){hint}", False)
                 return
             eng = get_engine()
             for label, path in (("CodeFlash", cf_out), ("DataFlash", df_out)):
@@ -1105,7 +1196,8 @@ class Studio(tk.Frame):
                             f"VCRN={sw.vcrn or '—'} · CRC={'OK' if sw.crc_ok else 'HATA'}", "ok")))
                 except Exception as exc:  # noqa: BLE001
                     self.queue.put(("log", (f"  ⚠ {label} doğrulanamadı: {exc}", "warn")))
-            self.queue.put(("log", (f"✔ bitti → {out}", "ok")))
+            self._log(f"✔ bitti → {out}", "ok")
+            self._set_lbl("42", f"✔ CodeFlash.swap.bin + DataFlash.swap.bin · hedef {target}", True)
             self.queue.put(("status", "Modulus gömüldü."))
 
         self._run_bg(job, "Modulus gömülüyor")
@@ -1114,36 +1206,55 @@ class Studio(tk.Frame):
         keyf = self._path(self.v_keyin)
         df = self._path(self.f_dflash)
         fec = self.v_fec.get().strip().lower().replace("0x", "")
-        if not self._need((keyf, "RSA özel anahtarı (4.1/4.2)")):
+        vcrn = re.sub(r"[\s:_-]", "", self.v_vcrn.get()).lower()
+        if not self._need((keyf, "RSA özel anahtarı (önce 4.1 ile üret)")):
             return
         if not re.fullmatch(r"[0-9a-f]{8}", fec):
             messagebox.showwarning(APP_SHORT, "FeC kodu 8 hex karakter olmalı (örn. 10000100).")
             return
+        if vcrn and not re.fullmatch(r"[0-9a-f]{10}", vcrn):
+            messagebox.showwarning(APP_SHORT,
+                                   "VCRN 5 bayt = 10 hex karakter olmalı (örn. 0102030405).")
+            return
+        if not vcrn and df is None:
+            messagebox.showwarning(APP_SHORT,
+                                   "VCRN gerekli: ya 'VCRN' alanını doldur ya da DataFlash dump'ını seç\n"
+                                   "(sertifika araca özel VCRN olmadan geçerli olmaz).")
+            return
         out = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
         out.mkdir(parents=True, exist_ok=True)
         fsc_out = out / f"fsc_{fec}.fsc"
+        # Tk değişkenlerini ana iş parçacığında oku
+        vin_val, no_vin = self.v_vin.get().strip().upper(), self.v_novin.get()
 
         def job():
             self._log(f"══ FSC imzalama (FeC {fec}) ══", "head")
+            self._set_lbl("43", "işleniyor...", True)
             tok = ["sign-fsc", "-k", str(keyf), "--fec", fec, "-o", str(fsc_out)]
-            if df:
+            if vcrn:
+                tok += ["--vcrn", vcrn]
+            elif df:
                 tok += ["--dflash", str(df)]
-            vin = self.v_vin.get().strip()
-            if vin and len(vin) == 17:
-                tok += ["--vin", vin]
-            elif self.v_novin.get() or not vin:
+            if vin_val and len(vin_val) == 17:
+                tok += ["--vin", vin_val]
+            elif no_vin or not vin_val:
                 tok.append("--no-vin")
             else:
-                self.queue.put(("log", ("⚠ VIN 17 karakter değil — joker (VIN'siz) üretiliyor.", "warn")))
+                self._log("⚠ VIN 17 karakter değil — joker (VIN'siz) üretiliyor.", "warn")
                 tok.append("--no-vin")
             rc, out1 = run_engine(tok)
             self._log_block(out1, "dim" if rc == 0 else "err")
             if rc != 0:
-                self.queue.put(("log", (f"✘ FSC üretilemedi (rc={rc})", "err")))
+                self._log(f"✘ FSC üretilemedi (rc={rc})", "err")
+                self._set_lbl("43", f"✘ üretilemedi (rc={rc}) — günlüğe bak", False)
                 return
             if fsc_out.is_file():
-                self.queue.put(("log", (
-                    f"✔ {fsc_out.name}  ({fmt_size(fsc_out.stat().st_size)})", "ok")))
+                size = fsc_out.stat().st_size
+                self._log(f"✔ {fsc_out.name}  ({fmt_size(size)})", "ok")
+                self._set_lbl("43", f"✔ {fsc_out.name} · {size} B · FeC {fec} · VCRN "
+                                    f"{vcrn or 'dump'}", True)
+            else:
+                self._set_lbl("43", "✘ dosya oluşmadı — günlüğe bak", False)
             self.queue.put(("status", "FSC hazır."))
 
         self._run_bg(job, "FSC imzalanıyor")
@@ -1159,13 +1270,16 @@ class Studio(tk.Frame):
 
         def job():
             self._log("══ Firmware imzalama (<FW-SIGNATURE>) ══", "head")
+            self._set_lbl("44", "imzalanıyor...", True)
             rc, out1 = run_engine(["sign-odx", "-i", str(src), "-k", str(keyf), "-o", str(sig_out)])
             self._log_block(out1, "dim" if rc == 0 else "err")
             if rc == 0 and sig_out.is_file():
-                self.queue.put(("log", (
-                    f"✔ {sig_out.name}  ({fmt_size(sig_out.stat().st_size)})", "ok")))
+                self._log(f"✔ {sig_out.name}  ({fmt_size(sig_out.stat().st_size)})", "ok")
+                self._set_lbl("44", f"✔ {sig_out.name} · "
+                                    f"{sig_out.stat().st_size} B", True)
             else:
-                self.queue.put(("log", (f"✘ imza üretilemedi (rc={rc})", "err")))
+                self._log(f"✘ imza üretilemedi (rc={rc})", "err")
+                self._set_lbl("44", f"✘ imza üretilemedi (rc={rc}) — günlüğe bak", False)
             self.queue.put(("status", "İmza hazır."))
 
         self._run_bg(job, "İmzalanıyor")
@@ -1211,10 +1325,16 @@ def main() -> int:
         lines.append(f"gen-rsa-key rc={rc}")
         lines.append(text[-600:])
         rc2, text2 = run_engine(["sign-fsc", "-k", str(out / "t.json"), "--fec", "10000100",
-                                 "--vcrn", "1122334455", "--no-vin", "-o", str(out / "t.fsc")])
+                                 "--vcrn", "0102030405", "--vin", "VSSZZZ5FZGR239596",
+                                 "-o", str(out / "t.fsc")])
         lines.append(f"sign-fsc rc={rc2}")
         fsc = out / "t.fsc"
         lines.append(f"fsc_boyut={fsc.stat().st_size if fsc.is_file() else -1}")
+        if fsc.is_file():
+            fb = fsc.read_bytes()
+            lines.append(f"fsc_vin_var={b'VSSZZZ5FZGR239596' in fb}")
+            lines.append(f"fsc_vcrn_var={bytes.fromhex('0102030405') in fb}")
+            lines.append(f"fsc_fec_var={bytes.fromhex('10000100') in fb}")
         lines.append("dosyalar: " + ", ".join(sorted(p.name for p in out.glob("*"))))
         report = "\n".join(lines)
         (out / "selftest.txt").write_text(report, encoding="utf-8")
