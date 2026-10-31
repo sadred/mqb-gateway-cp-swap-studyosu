@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.0"
+APP_VERSION = "2.1"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -595,24 +595,25 @@ class Studio(tk.Frame):
         f.columnconfigure(0, weight=1)
         f.columnconfigure(1, weight=1)
 
-        # 4a paket anahtarı (üretim yok)
-        k = ttk.LabelFrame(f, text=" 4.1 · Anahtar (pakete gömülü, RSA-1024 e=3) ", padding=8)
-        k.grid(row=0, column=0, columnspan=2, sticky="ew")
-        k.columnconfigure(0, weight=1)
+        # paket public key — adım değil, sadece bilgi satırı
+        kb = ttk.Frame(f)
+        kb.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        kb.columnconfigure(1, weight=1)
         has_key = bundled_key() is not None
-        self.lbl_41 = ttk.Label(
-            k, foreground="#1f8f3d" if has_key else "#b3261e",
-            text=(f"✔ Hazır · N = {bundled_modulus()} · 4.2 / 4.3 / 4.4 bu anahtarı kullanır "
-                  f"(üretim veya seçim gerekmez)" if has_key else "✘ Paket anahtarı bulunamadı"))
-        self.lbl_41.grid(row=0, column=0, sticky="w")
-        tip(self.lbl_41, "Pakete gömülü tek RSA-1024 (e=3) anahtar çifti. Ayrıntı: algılanan açık anahtar\n"
-                         "gateway'e yazılır (4.2), özel anahtar yalnız imza için kullanılır (4.3/4.4).\n"
-                         "Anahtar üretmen veya seçmen gerekmez.")
+        ttk.Label(kb, text="Public key (pakette):", foreground="#6b6b6b").grid(row=0, column=0, sticky="w")
+        self.lbl_key = ttk.Label(
+            kb, font=("Consolas", 9), foreground="#1f8f3d" if has_key else "#b3261e",
+            text=f"N = {bundled_modulus()} · e = 3" if has_key else "bulunamadı")
+        self.lbl_key.grid(row=0, column=1, sticky="w", padx=(6, 6))
+        bkc = ttk.Button(kb, text="Kopyala", width=8, command=self._copy_pubkey)
+        bkc.grid(row=0, column=2, sticky="e")
+        tip(bkc, "Gateway'e yazılan açık anahtarın (128 bayt modulus, e=3) tam hex değerini panoya kopyalar.\n"
+                 "4.1'de bu anahtar firmware'e gömülür, 4.2'de sertifikalar bu anahtarın özel kısmıyla imzalanır.")
 
-        # 4b modulus gömme
-        m = ttk.LabelFrame(f, text=" 4.2 · Açık anahtarı gateway'e göm (SWaP / FBL modulus) ",
+        # 4.1 modulus gömme
+        m = ttk.LabelFrame(f, text=" 4.1 · Açık anahtarı gateway'e göm (SWaP / FBL modulus) ",
                            padding=8)
-        m.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        m.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
         m.columnconfigure(1, weight=1)
         row = ttk.Frame(m)
         row.grid(row=0, column=0, columnspan=3, sticky="ew")
@@ -643,7 +644,7 @@ class Studio(tk.Frame):
         self.lbl_42.grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4c FSC imzalama
-        s = ttk.LabelFrame(f, text=" 4.3 · SWaP / FeC (FSC) sertifikası imzala ", padding=8)
+        s = ttk.LabelFrame(f, text=" 4.2 · SWaP / FeC (FSC) sertifikası imzala ", padding=8)
         s.grid(row=2, column=0, sticky="nsew", pady=(8, 0), padx=(0, 6))
         s.columnconfigure(1, weight=1)
         self.v_fec = tk.StringVar(value="10000100")
@@ -651,8 +652,12 @@ class Studio(tk.Frame):
         ttk.Label(s, text="FeC kodu").grid(row=0, column=0, sticky="w")
         ef = ttk.Entry(s, textvariable=self.v_fec, width=16)
         ef.grid(row=0, column=1, sticky="w", padx=4)
-        tip(ef, "4 baytlık FeC kodu (hex). Örnekler: 10000100 = FPA sürüş profili (Driving Mode), "
-                "10000300 = MKE sürücü uyarı, 10001800 = Snow. 171 baytlık sertifika üretilir.")
+        tip(ef, "4 baytlık FeC kodu (hex). Birden fazla kod yazabilirsin: virgül veya boşlukla ayır\n"
+                "(örn. 10000100, 10000300, 10001800). Her kod için ayrı .fsc üretilir.\n"
+                "10000100 = FPA sürüş profili · 10000300 = MKE sürücü uyarı · 10001800 = MKB çoklu çarpışma")
+        bfec = ttk.Button(s, text="Seç...", width=7, command=self._pick_fecs)
+        bfec.grid(row=0, column=2, sticky="w")
+        tip(bfec, "Bilinen 13 FeC kodunu isimleriyle listeler; birden fazlasını işaretleyip alana ekler.")
         ttk.Label(s, text="VIN").grid(row=1, column=0, sticky="w")
         ev = ttk.Entry(s, textvariable=self.v_vin, width=20)
         ev.grid(row=1, column=1, sticky="w", padx=4)
@@ -680,7 +685,7 @@ class Studio(tk.Frame):
         self.lbl_43.grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4d ODX imzalama
-        o = ttk.LabelFrame(f, text=" 4.4 · Firmware (.odx) imzala — <FW-SIGNATURE> ", padding=8)
+        o = ttk.LabelFrame(f, text=" 4.3 · Firmware (.odx) imzala — <FW-SIGNATURE> ", padding=8)
         o.grid(row=2, column=1, sticky="nsew", pady=(8, 0))
         o.columnconfigure(1, weight=1)
         self.v_odxin = tk.StringVar()
@@ -841,6 +846,75 @@ class Studio(tk.Frame):
 
     def _rand_key(self) -> None:
         self.v_key.set(random_ika())
+
+    def _copy_pubkey(self) -> None:
+        """Paket public key'inin (modulus) tam hex'ini panoya kopyalar."""
+        p = bundled_key()
+        if p is None:
+            messagebox.showerror(APP_SHORT, "Paket anahtarı bulunamadı.")
+            return
+        try:
+            n = json.loads(p.read_text(encoding="utf-8")).get("n_hex", "")
+        except (OSError, ValueError):
+            n = ""
+        if not n:
+            messagebox.showerror(APP_SHORT, "Anahtar dosyası okunamadı.")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(n)
+        self._log(f"  public key panoya kopyalandı ({len(n)} hex karakter) · N = {n[:24]}…", "ok")
+
+    def _pick_fecs(self) -> None:
+        """Bilinen FeC kodlarını çoklu seçimle alana ekler."""
+        eng = get_engine()
+        table = getattr(eng, "KNOWN_GATEWAY_FECS", {}) if eng else {}
+        if not table:
+            messagebox.showwarning(APP_SHORT, "FeC tablosu motordan okunamadı.")
+            return
+        win = tk.Toplevel(self)
+        win.title("FeC kodu seç (birden fazla işaretleyebilirsin)")
+        win.transient(self.master)
+        win.resizable(False, False)
+        body = ttk.Frame(win, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Gateway'in bilinen 13 SWaP/FeC kodu:", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        vars_: dict[str, tk.BooleanVar] = {}
+        grid = ttk.Frame(body)
+        grid.pack(fill="both", expand=True, pady=(6, 8))
+        current = set(self._fec_codes())
+        for i, (code, names) in enumerate(sorted(table.items())):
+            hx = f"{code:08x}"
+            v = tk.BooleanVar(value=hx in current)
+            vars_[hx] = v
+            cb = ttk.Checkbutton(grid, text=f"{hx}  ·  {names[1]}", variable=v)
+            cb.grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 18), pady=1)
+            tip(cb, f"FeC 0x{code:08X}\n{names[0]}\n{names[1]}")
+        btns = ttk.Frame(body)
+        btns.pack(fill="x")
+
+        def apply_and_close():
+            codes = [c for c, v in vars_.items() if v.get()]
+            if codes:
+                self.v_fec.set(", ".join(codes))
+                self._set_lbl("43", f"{len(codes)} FeC seçildi — 'FSC imzala' ile her biri için .fsc üretilir", True)
+            win.destroy()
+
+        ok = ttk.Button(btns, text="Seç ve kapat", command=apply_and_close)
+        ok.pack(side="left")
+        ttk.Button(btns, text="Vazgeç", command=win.destroy).pack(side="left", padx=6)
+        tip(ok, "İşaretli kodları FeC alanına virgülle yazar; imzalama her kod için ayrı dosya üretir.")
+        win.bind("<Escape>", lambda _e: win.destroy())
+        win.grab_set()
+
+    def _fec_codes(self) -> list[str]:
+        """FeC alanındaki kodları (virgül/boşluk karışık) sırayla döndürür."""
+        raw = self.v_fec.get()
+        codes: list[str] = []
+        for m in re.findall(r"(?:0x)?([0-9a-fA-F]{8})", raw):
+            c = m.lower()
+            if c not in codes:
+                codes.append(c)
+        return codes
 
     def _read_vcrn(self) -> None:
         """VCRN'i DataFlash dump'ından okur (SWaP önbelleği 0xDC0C)."""
@@ -1205,13 +1279,15 @@ class Studio(tk.Frame):
     def _do_fsc(self) -> None:
         keyf = bundled_key()
         df = self._path(self.f_dflash)
-        fec = self.v_fec.get().strip().lower().replace("0x", "")
+        codes = self._fec_codes()
         vcrn = re.sub(r"[\s:_-]", "", self.v_vcrn.get()).lower()
         if keyf is None:
             messagebox.showerror(APP_SHORT, "Paket anahtarı bulunamadı (assets/anahtar/swap_rsa1024.json).")
             return
-        if not re.fullmatch(r"[0-9a-f]{8}", fec):
-            messagebox.showwarning(APP_SHORT, "FeC kodu 8 hex karakter olmalı (örn. 10000100).")
+        if not codes:
+            messagebox.showwarning(APP_SHORT,
+                                   "En az bir FeC kodu gir (8 hex, örn. 10000100).\n"
+                                   "Birden fazla kod için virgülle ayır: 10000100, 10000300")
             return
         if vcrn and not re.fullmatch(r"[0-9a-f]{10}", vcrn):
             messagebox.showwarning(APP_SHORT,
@@ -1224,39 +1300,45 @@ class Studio(tk.Frame):
             return
         out = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
         out.mkdir(parents=True, exist_ok=True)
-        fsc_out = out / f"fsc_{fec}.fsc"
         # Tk değişkenlerini ana iş parçacığında oku
         vin_val, no_vin = self.v_vin.get().strip().upper(), self.v_novin.get()
 
         def job():
-            self._log(f"══ FSC imzalama (FeC {fec}) ══", "head")
+            self._log(f"══ FSC imzalama · {len(codes)} kod: {', '.join(codes)} ══", "head")
             self._set_lbl("43", "işleniyor...", True)
-            tok = ["sign-fsc", "-k", str(keyf), "--fec", fec, "-o", str(fsc_out)]
-            if vcrn:
-                tok += ["--vcrn", vcrn]
-            elif df:
-                tok += ["--dflash", str(df)]
-            if vin_val and len(vin_val) == 17:
-                tok += ["--vin", vin_val]
-            elif no_vin or not vin_val:
-                tok.append("--no-vin")
+            ok_list: list[str] = []
+            bad_list: list[str] = []
+            for code in codes:
+                fsc_out = out / f"fsc_{code}.fsc"
+                tok = ["sign-fsc", "-k", str(keyf), "--fec", code, "-o", str(fsc_out)]
+                if vcrn:
+                    tok += ["--vcrn", vcrn]
+                elif df:
+                    tok += ["--dflash", str(df)]
+                if vin_val and len(vin_val) == 17:
+                    tok += ["--vin", vin_val]
+                elif no_vin or not vin_val:
+                    tok.append("--no-vin")
+                else:
+                    self._log("⚠ VIN 17 karakter değil — joker (VIN'siz) üretiliyor.", "warn")
+                    tok.append("--no-vin")
+                rc, out1 = run_engine(tok)
+                if rc == 0 and fsc_out.is_file():
+                    ok_list.append(f"{code} ({fsc_out.stat().st_size} B)")
+                    self._log(f"✔ {fsc_out.name}  ({fmt_size(fsc_out.stat().st_size)})", "ok")
+                else:
+                    bad_list.append(code)
+                    self._log(f"✘ FeC {code}: üretilemedi (rc={rc})", "err")
+                    self._log_block(out1, "err")
+            if ok_list:
+                self._set_lbl("43", f"✔ {len(ok_list)} sertifika: {', '.join(ok_list[:4])}"
+                                    + (" …" if len(ok_list) > 4 else ""), not bad_list)
             else:
-                self._log("⚠ VIN 17 karakter değil — joker (VIN'siz) üretiliyor.", "warn")
-                tok.append("--no-vin")
-            rc, out1 = run_engine(tok)
-            self._log_block(out1, "dim" if rc == 0 else "err")
-            if rc != 0:
-                self._log(f"✘ FSC üretilemedi (rc={rc})", "err")
-                self._set_lbl("43", f"✘ üretilemedi (rc={rc}) — günlüğe bak", False)
-                return
-            if fsc_out.is_file():
-                size = fsc_out.stat().st_size
-                self._log(f"✔ {fsc_out.name}  ({fmt_size(size)})", "ok")
-                self._set_lbl("43", f"✔ {fsc_out.name} · {size} B · FeC {fec} · VCRN "
-                                    f"{vcrn or 'dump'}", True)
-            else:
-                self._set_lbl("43", "✘ dosya oluşmadı — günlüğe bak", False)
-            self.queue.put(("status", "FSC hazır."))
+                self._set_lbl("43", "✘ hiçbir sertifika üretilemedi — günlüğe bak", False)
+            if bad_list:
+                self._log(f"⚠ başarısız FeC: {', '.join(bad_list)}", "warn")
+            self._log(f"✔ bitti → {out}", "ok")
+            self.queue.put(("status", f"{len(ok_list)}/{len(codes)} FSC hazır."))
 
         self._run_bg(job, "FSC imzalanıyor")
 
