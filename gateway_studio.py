@@ -35,7 +35,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.3"
+APP_VERSION = "2.4"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -739,8 +739,8 @@ class Studio(tk.Frame):
         bad = ttk.Button(s, text="Transfer SWaP değeri (adaptasyon)", command=self._show_adapt_values)
         bad.grid(row=5, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
         tip(bad, "Adaptasyon > 'Transfer SWaP function' alanına yapıştırılacak UZUN değeri üretir.\n"
-                 "Her FeC için DEC (10'luk tamsayı), HEX ve Base64 biçimlerini gösterir + .txt yazar.\n"
-                 "Alan decimal kabul etmiyorsa HEX'i dene.")
+                 "Her FeC için HEX, DEC ve Base64 biçimlerini gösterir + .txt yazar.\n"
+                 "HEX otomatik panoya kopyalanır; alan kabul etmezse DEC'i dene.")
         tip(bfs, "İşaretlediğin her SWaP kodu için 171 baytlık SWaP/FeC sertifikası üretir "
                  "(RIPEMD-160 + RSA-1024 e=3, paket anahtarıyla).\n"
                  "Çıktı: fsc_<kod>.fsc — OBD'den 2E 3C 01 + 31 01 C0 01 ile yüklenir.")
@@ -989,8 +989,8 @@ class Studio(tk.Frame):
         ttk.Label(body, text="Adaptasyon > 'Transfer SWaP function' alanına bu değeri yapıştır.",
                   font=("Segoe UI", 9, "bold")).pack(anchor="w")
         ttk.Label(body, foreground="#6b6b6b", wraplength=760, justify="left",
-                  text="Önce DEC (10'luk sayı) dene — ODIS/VCDS adaptasyon alanları ondalık bekler. "
-                       "Kabul etmezse HEX'i, o da olmazsa Base64'ü dene.\n"
+                  text="HEX değeri otomatik panoya kopyalandı — adaptasyon alanına yapıştır. "
+                       "Kabul etmezse DEC'i (10'luk sayı), o da olmazsa Base64'ü dene.\n"
                        "Değer 171 baytlık FSC sertifikasının kendisidir; gateway bunu çözüp imzayı doğrular."
                   ).pack(anchor="w", pady=(2, 8))
 
@@ -1006,7 +1006,7 @@ class Studio(tk.Frame):
             produced += 1
             row = ttk.LabelFrame(body, text=f" FeC {code} · {len(fsc)} bayt ", padding=6)
             row.pack(fill="x", pady=3)
-            for i, key in enumerate(("DEC", "HEX", "BASE64")):
+            for i, key in enumerate(("HEX", "DEC", "BASE64")):
                 val = fmts[key]
                 ttk.Label(row, text=f"{key:6}", width=7).grid(row=i, column=0, sticky="w")
                 ent = ttk.Entry(row, width=64)
@@ -1023,8 +1023,8 @@ class Studio(tk.Frame):
                 txt = out_dir / f"adapt_{code}.txt"
                 payload = [
                     f"FeC {code} · 171 bayt FSC · Transfer SWaP (adaptasyon)", "",
-                    "DEC:", fmts["DEC"], "",
                     "HEX:", fmts["HEX"], "",
+                    "DEC:", fmts["DEC"], "",
                     "HEX (bosluklu):", fmts["HEX_SPACED"], "",
                     "0xHEX:", fmts["0xHEX"], "",
                     "BASE64:", fmts["BASE64"], "",
@@ -1040,7 +1040,11 @@ class Studio(tk.Frame):
                   text=f"{produced} değer üretildi · .txt dosyaları: {out_dir}"
                   ).pack(side="left")
         if produced:
+            first = self._fsc_for(codes[0])
+            if first is not None:
+                self._copy_text(first.hex().upper())
             self._log(f"  adaptasyon değerleri üretildi ({produced} kod) → {out_dir}", "ok")
+            self._log("  ilk kodun HEX değeri panoya kopyalandı", "ok")
         win.bind("<Escape>", lambda _e: win.destroy())
 
     def _copy_text(self, text: str) -> None:

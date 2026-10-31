@@ -39,8 +39,8 @@ görünür. `sign-fsc` için **VCRN zorunludur**: alanı elle doldur (10 hex, ö
 DataFlash dump'ı varsa **Oku** düğmesiyle DID `0x3C03` değerini çek.
 
 **Transfer SWaP (adaptasyon):** 4.2'deki **"Transfer SWaP değeri (adaptasyon)"** düğmesi her kod için
-DEC (411 hane), HEX (342 karakter) ve Base64 (228 karakter) biçimlerini üretir; adaptasyon alanına
-DEC'i yapıştır, kabul etmezse HEX'i dene. Ayrıntı `adapt_<kod>.txt` dosyasında. Şart: önce **4.1** ile
+**HEX (342 karakter)**, DEC (411 hane) ve Base64 (228 karakter) biçimlerini üretir; **HEX otomatik
+panoya kopyalanır** — adaptasyon alanına doğrudan yapıştır, kabul etmezse DEC'i dene. Ayrıntı `adapt_<kod>.txt` dosyasında. Şart: önce **4.1** ile
 senin public key'in gateway'e yazılmış olmalı, yoksa imza reddedilir.
 
 **4.2 akışı:** şase (VIN) + VCRN gir → istediğin SWaP kodlarını **işaretle** (14 bilinen kod, Türkçe adlarıyla)
