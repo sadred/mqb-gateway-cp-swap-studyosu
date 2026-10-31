@@ -14,6 +14,7 @@ Tek dosya, Tkinter, harici Python paketi yok.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import io
 import json
@@ -34,7 +35,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -734,7 +735,12 @@ class Studio(tk.Frame):
                 "Buraya yazılanlar işaretli kodlarla birlikte imzalanır.")
 
         bfs = ttk.Button(s, text="Seçilen SWaP'lar için FSC oluştur", command=self._do_fsc)
-        bfs.grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        bfs.grid(row=5, column=0, sticky="w", pady=(10, 0))
+        bad = ttk.Button(s, text="Transfer SWaP değeri (adaptasyon)", command=self._show_adapt_values)
+        bad.grid(row=5, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
+        tip(bad, "Adaptasyon > 'Transfer SWaP function' alanına yapıştırılacak UZUN değeri üretir.\n"
+                 "Her FeC için DEC (10'luk tamsayı), HEX ve Base64 biçimlerini gösterir + .txt yazar.\n"
+                 "Alan decimal kabul etmiyorsa HEX'i dene.")
         tip(bfs, "İşaretlediğin her SWaP kodu için 171 baytlık SWaP/FeC sertifikası üretir "
                  "(RIPEMD-160 + RSA-1024 e=3, paket anahtarıyla).\n"
                  "Çıktı: fsc_<kod>.fsc — OBD'den 2E 3C 01 + 31 01 C0 01 ile yüklenir.")
@@ -930,6 +936,117 @@ class Studio(tk.Frame):
             if c not in codes:
                 codes.append(c)
         return codes
+
+    def _fsc_for(self, code: str) -> bytes | None:
+        """Seçili kod için FSC'yi paket anahtarıyla üretir (bellekte)."""
+        eng = get_engine()
+        keyf = bundled_key()
+        if eng is None or keyf is None:
+            return None
+        n_bytes, d_int = eng.load_rsa1024_key_material(str(keyf))
+        if d_int is None:
+            return None
+        vcrn = re.sub(r"[\s:_-]", "", self.v_vcrn.get()).lower()
+        df = self._path(self.f_dflash)
+        if not vcrn and df:
+            try:
+                vcrn = (eng.analyze_dflash_swap(df.read_bytes()).vcrn or "").replace(" ", "")
+            except Exception:  # noqa: BLE001
+                vcrn = ""
+        if len(vcrn) != 10:
+            return None
+        vin = "" if self.v_novin.get() else self.v_vin.get().strip().upper()
+        if vin and len(vin) != 17:
+            return None
+        try:
+            return eng.build_signed_fsc(int(code, 16), bytes.fromhex(vcrn), vin, n_bytes, d_int)
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _adapt_formats(fsc: bytes) -> dict[str, str]:
+        """Adaptasyon alanına yapıştırılabilecek biçimler."""
+        return {
+            "DEC": str(int.from_bytes(fsc, "big")),
+            "HEX": fsc.hex().upper(),
+            "HEX_SPACED": " ".join(f"{b:02X}" for b in fsc),
+            "0xHEX": "0x" + fsc.hex().upper(),
+            "BASE64": base64.b64encode(fsc).decode("ascii"),
+            "BYTES": ",".join(str(b) for b in fsc),
+        }
+
+    def _show_adapt_values(self) -> None:
+        """Transfer SWaP (adaptasyon) için uzun değeri üretir: DEC / HEX / Base64."""
+        codes = self._fec_codes()
+        if not codes:
+            messagebox.showwarning(APP_SHORT, "Önce en az bir SWaP kodu seç.")
+            return
+        win = tk.Toplevel(self)
+        win.title("Transfer SWaP — adaptasyon değeri")
+        win.transient(self.master)
+        body = ttk.Frame(win, padding=10)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Adaptasyon > 'Transfer SWaP function' alanına bu değeri yapıştır.",
+                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        ttk.Label(body, foreground="#6b6b6b", wraplength=760, justify="left",
+                  text="Önce DEC (10'luk sayı) dene — ODIS/VCDS adaptasyon alanları ondalık bekler. "
+                       "Kabul etmezse HEX'i, o da olmazsa Base64'ü dene.\n"
+                       "Değer 171 baytlık FSC sertifikasının kendisidir; gateway bunu çözüp imzayı doğrular."
+                  ).pack(anchor="w", pady=(2, 8))
+
+        out_dir = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
+        produced = 0
+        for code in codes:
+            fsc = self._fsc_for(code)
+            if fsc is None:
+                ttk.Label(body, text=f"{code}: ✘ üretilemedi (şase/VCRN/anahtar eksik)",
+                          foreground="#b3261e").pack(anchor="w")
+                continue
+            fmts = self._adapt_formats(fsc)
+            produced += 1
+            row = ttk.LabelFrame(body, text=f" FeC {code} · {len(fsc)} bayt ", padding=6)
+            row.pack(fill="x", pady=3)
+            for i, key in enumerate(("DEC", "HEX", "BASE64")):
+                val = fmts[key]
+                ttk.Label(row, text=f"{key:6}", width=7).grid(row=i, column=0, sticky="w")
+                ent = ttk.Entry(row, width=64)
+                ent.insert(0, val)
+                ent.configure(state="readonly")
+                ent.grid(row=i, column=1, sticky="ew", padx=4, pady=1)
+                b = ttk.Button(row, text="Kopyala", width=9,
+                               command=lambda v=val: self._copy_text(v))
+                b.grid(row=i, column=2, sticky="w")
+            row.columnconfigure(1, weight=1)
+            # dosyaya yaz
+            try:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                txt = out_dir / f"adapt_{code}.txt"
+                payload = [
+                    f"FeC {code} · 171 bayt FSC · Transfer SWaP (adaptasyon)", "",
+                    "DEC:", fmts["DEC"], "",
+                    "HEX:", fmts["HEX"], "",
+                    "HEX (bosluklu):", fmts["HEX_SPACED"], "",
+                    "0xHEX:", fmts["0xHEX"], "",
+                    "BASE64:", fmts["BASE64"], "",
+                    "BYTES:", fmts["BYTES"], "",
+                ]
+                txt.write_text(chr(10).join(payload), encoding="utf-8")
+            except OSError:
+                pass
+        foot = ttk.Frame(body)
+        foot.pack(fill="x", pady=(6, 0))
+        ttk.Button(foot, text="Kapat", command=win.destroy).pack(side="right")
+        ttk.Label(foot, foreground="#6b6b6b",
+                  text=f"{produced} değer üretildi · .txt dosyaları: {out_dir}"
+                  ).pack(side="left")
+        if produced:
+            self._log(f"  adaptasyon değerleri üretildi ({produced} kod) → {out_dir}", "ok")
+        win.bind("<Escape>", lambda _e: win.destroy())
+
+    def _copy_text(self, text: str) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self._log(f"  panoya kopyalandı ({len(text)} karakter)", "ok")
 
     def _read_vcrn(self) -> None:
         """VCRN'i DataFlash dump'ından okur (SWaP önbelleği 0xDC0C)."""
