@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "1.3"
+APP_VERSION = "1.4"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -48,6 +48,9 @@ APP_DIR = Path(sys.executable).resolve().parent if FROZEN else HERE
 ENGINE_BUNDLED = ASSET_DIR.parent / "motor"
 ENGINE_FILE = "conti_cp_tool.py"
 CFG_PATH = APP_DIR / "studyo_ayarlar.json"
+# Kalıcı anahtar kasası: uygulama klasörü yenilense bile anahtar kaybolmaz
+KEY_DIR = Path.home() / "Documents" / "DenizliGaraj-Anahtarlar"
+KEY_DEFAULT = KEY_DIR / "swap_rsa1024.json"
 
 CFLASH_SIZES = {1_523_200, 1_572_864}
 DFLASH_SIZE = 65_536
@@ -575,17 +578,22 @@ class Studio(tk.Frame):
         k = ttk.LabelFrame(f, text=" 4.1 · RSA-1024 (e=3) anahtar üret ", padding=8)
         k.grid(row=0, column=0, columnspan=2, sticky="ew")
         k.columnconfigure(1, weight=1)
-        self.v_keyout = tk.StringVar(value=str(APP_DIR / "cikti" / "swap_rsa1024.json"))
+        self.v_keyout = tk.StringVar(value=str(KEY_DEFAULT))
         ttk.Label(k, text="Kayıt yolu").grid(row=0, column=0, sticky="w")
         e = ttk.Entry(k, textvariable=self.v_keyout)
         e.grid(row=0, column=1, sticky="ew", padx=4)
-        tip(e, "Üretilen anahtarın yolu. .json (+ aynı klasöre .private.pem / .public.pem) yazılır.")
+        tip(e, "Üretilen anahtarın yolu. Kalıcı kasa: Belgeler\\DenizliGaraj-Anahtarlar\\swap_rsa1024.json\n"
+               "(.json + .private.pem + .public.pem). Uygulama klasörü silinse bile anahtar burada kalır.")
         bg = ttk.Button(k, text="Üret", width=8, command=self._do_genkey)
         bg.grid(row=0, column=2)
         tip(bg, "Yeni RSA-1024 (açık üs e=3) anahtar çifti üretir. Bu anahtar gateway'e gömülür ve "
                 "SWaP/FeC sertifikalarını imzalamak için kullanılır. Anahtarı kaybetme — geri alınamaz.")
         self.lbl_41 = ttk.Label(k, text="henüz anahtar üretilmedi · TEK SEFER üret, özel anahtarı sakla",
                                 foreground="#8b949e")
+        if KEY_DEFAULT.is_file():
+            self.lbl_41.configure(
+                text=f"✔ mevcut anahtar: {KEY_DEFAULT.name} · YENİDEN ÜRETME, 4.2/4.3 bunu kullanır",
+                foreground="#1f8f3d")
         self.lbl_41.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4b modulus gömme
@@ -593,7 +601,7 @@ class Studio(tk.Frame):
                            padding=8)
         m.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         m.columnconfigure(1, weight=1)
-        self.v_keyin = tk.StringVar()
+        self.v_keyin = tk.StringVar(value=str(KEY_DEFAULT) if KEY_DEFAULT.is_file() else "")
         ttk.Label(m, text="Anahtar dosyası").grid(row=0, column=0, sticky="w")
         e2 = ttk.Entry(m, textvariable=self.v_keyin)
         e2.grid(row=0, column=1, sticky="ew", padx=4)
@@ -1131,7 +1139,7 @@ class Studio(tk.Frame):
         self._run_bg(job, "Engineering Mode uygulanıyor")
 
     def _do_genkey(self) -> None:
-        p = Path(self.v_keyout.get().strip() or (APP_DIR / "cikti" / "swap_rsa1024.json"))
+        p = Path(self.v_keyout.get().strip() or KEY_DEFAULT)
         p.parent.mkdir(parents=True, exist_ok=True)
         # Üzerine yazma koruması: eski özel anahtar kaybolursa gateway'e gömülü modulus
         # bir daha imzalanamaz (4.3/4.4 çalışmaz).
