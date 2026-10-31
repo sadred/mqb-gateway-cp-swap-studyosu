@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -584,7 +584,8 @@ class Studio(tk.Frame):
         bg.grid(row=0, column=2)
         tip(bg, "Yeni RSA-1024 (açık üs e=3) anahtar çifti üretir. Bu anahtar gateway'e gömülür ve "
                 "SWaP/FeC sertifikalarını imzalamak için kullanılır. Anahtarı kaybetme — geri alınamaz.")
-        self.lbl_41 = ttk.Label(k, text="henüz anahtar üretilmedi", foreground="#8b949e")
+        self.lbl_41 = ttk.Label(k, text="henüz anahtar üretilmedi · TEK SEFER üret, özel anahtarı sakla",
+                                foreground="#8b949e")
         self.lbl_41.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # 4b modulus gömme
@@ -1132,6 +1133,20 @@ class Studio(tk.Frame):
     def _do_genkey(self) -> None:
         p = Path(self.v_keyout.get().strip() or (APP_DIR / "cikti" / "swap_rsa1024.json"))
         p.parent.mkdir(parents=True, exist_ok=True)
+        # Üzerine yazma koruması: eski özel anahtar kaybolursa gateway'e gömülü modulus
+        # bir daha imzalanamaz (4.3/4.4 çalışmaz).
+        if p.exists() or p.with_suffix(".private.pem").exists():
+            if not messagebox.askyesno(
+                APP_TITLE,
+                f"Bu yolda zaten bir anahtar var:\n{p}\n\n"
+                "Üzerine yazarsan ESKİ ÖZEL ANAHTAR KAYBOLUR. Gateway'e daha önce bu anahtarın "
+                "public kısmı gömüldüyse (4.2), eski sertifikaları bir daha imzalayamazsın ve "
+                "yeniden 4.2 + 4.3 yapman gerekir.\n\n"
+                "Yine de yeni anahtar üretilsin mi?\n"
+                "(Hayır dersen 'Kayıt yolu' alanını değiştir — ör. swap_rsa1024_v2.json)",
+            ):
+                self._log("  anahtar üretimi iptal edildi (üzerine yazma koruması).", "warn")
+                return
 
         def job():
             self._log("══ RSA-1024 (e=3) anahtar üretimi ══", "head")
