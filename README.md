@@ -56,6 +56,15 @@ veya `Özel kod(lar)` alanına virgülle yaz → **"Seçilen SWaP'lar için FSC 
 
 Her düğme/alan üzerine gelindiğinde **Türkçe açıklama** gösterir.
 
+## Durum
+
+- **Sürüm:** 2.7 · exe (imzalı) → [releases](https://github.com/sadred/mqb-gateway-cp-swap-studyosu/releases/latest)
+- **Doğrulanan:** dump inceleme, 12 banka ayrıştırma, 4.1 public key gömme, 4.2 FSC üretimi (171 bayt),
+  adaptasyon HEX'i (342 karakter) — gerçek `3Q0 907 530E` CodeFlash dump'ı ile test edildi
+  (modulus stok `99197020…` → `c8abf290…`, App CRC `0x3045` → `0xA424`, 129 bayt fark).
+- **Henüz denenmedi:** **canlı araçta** CP bağlama, FSC yazma ve adaptasyon. Araç üzerinde denemeden
+  önce tam yedek alın; geri bildirim (kabul / NRC kodu) README'ye işlenecek.
+
 ## Kurulum
 
 **Hazır exe (önerilen):** `dist/MQB-Gateway-CP-SWaP-Studyosu.exe` — tek dosya, Python gerekmez,
