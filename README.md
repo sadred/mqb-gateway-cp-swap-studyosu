@@ -38,7 +38,8 @@ Her bölümün altında **sonuç etiketi** vardır (✔ üretildi / ✘ sebep), 
 görünür. `sign-fsc` için **VCRN zorunludur**: alanı elle doldur (10 hex, örn. `0102030405`) veya
 DataFlash dump'ı varsa **Oku** düğmesiyle DID `0x3C03` değerini çek.
 
-**Transfer SWaP (adaptasyon):** 4.2'deki **"Transfer SWaP HEX (kopyala)"** düğmesi ayrı pencere açmaz;
+**Transfer SWaP (adaptasyon):** her SWaP kodunun yanında **Kopyala** düğmesi vardır (yalnız o kodun 342 karakterlik
+HEX'ini üretip panoya alır). Üstteki **"Transfer SWaP HEX (kopyala)"** düğmesi ayrı pencere açmaz;
 **kopyalama menüsü** açar: her FeC için `HEX kopyala · FeC xxxxxxxx (342 karakter)`, çoklu seçimde
 `Tümünü kopyala`, ayrıca `HEX'i .txt dosyasına yaz` (sadece HEX). Değer 171 baytlık FSC'nin HEX'idir. Şart: önce **4.1** ile
 senin public key'in gateway'e yazılmış olmalı, yoksa imza reddedilir.

@@ -35,7 +35,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.5"
+APP_VERSION = "2.6"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -709,23 +709,33 @@ class Studio(tk.Frame):
         grid = ttk.Frame(s)
         grid.grid(row=3, column=0, columnspan=3, sticky="ew")
         self.fec_vars: dict[str, tk.BooleanVar] = {}
+        self.fec_copy: dict[str, object] = {}
         eng0 = get_engine()
         table = getattr(eng0, "KNOWN_GATEWAY_FECS", {}) if eng0 else {}
-        names_tr = {
-            "10000100": "Sürüş profili seçimi (FPA)",
-            "10000200": "Genişletilmiş FPA",
-            "10000300": "Sürücü uyarı / yorgunluk (MKE)",
-            "10001100": "Enerji yönetimi / rejenerasyon",
-            "10001800": "Çoklu çarpışma freni (MKB)",
+        short_tr = {
+            "10000100": "FPA sürüş profili",
+            "10000200": "FPA genişletilmiş",
+            "10000300": "MKE yorgunluk",
+            "10001100": "Enerji yönetimi",
+            "10001800": "MKB çoklu çarpışma",
         }
         for i, code in enumerate(sorted(table)):
             hx = f"{code:08x}"
+            cell = ttk.Frame(grid)
+            cell.grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 12), pady=1)
             var = tk.BooleanVar(value=False)
             self.fec_vars[hx] = var
-            label = names_tr.get(hx, f"Gateway SWaP {hx[-4:].upper()}")
-            cb = ttk.Checkbutton(grid, text=f"{hx} · {label}", variable=var)
-            cb.grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 14), pady=1)
-            tip(cb, f"FeC 0x{code:08X} — {table[code][1]}\nİşaretlersen bu kod için ayrı .fsc dosyası üretilir.")
+            label = short_tr.get(hx, f"GW {hx[-4:].upper()}")
+            cb = ttk.Checkbutton(cell, text=f"{hx} {label}", variable=var)
+            cb.pack(side="left")
+            tip(cb, f"FeC 0x{code:08X} — {table[code][1]}\n"
+                    "İşaretlersen bu kod için ayrı .fsc üretilir; yanındaki Kopyala yalnız bu kodu kopyalar.")
+            btn = ttk.Button(cell, text="Kopyala", width=8,
+                             command=lambda h=hx: self._copy_fec_hex(h))
+            btn.pack(side="left", padx=(4, 0))
+            tip(btn, f"Yalnız FeC {hx} için HEX değerini üret ve panoya kopyala (342 karakter).\n"
+                     "Şase ve VCRN dolu olmalı.")
+            self.fec_copy[hx] = btn
         # özel kod
         ttk.Label(s, text="Özel kod(lar)").grid(row=4, column=0, sticky="w", pady=(6, 0))
         self.v_fec = tk.StringVar(value=str(self.cfg.get("fec_extra", "")))
@@ -963,6 +973,24 @@ class Studio(tk.Frame):
             return eng.build_signed_fsc(int(code, 16), bytes.fromhex(vcrn), vin, n_bytes, d_int)
         except Exception:  # noqa: BLE001
             return None
+
+    def _copy_fec_hex(self, code: str) -> None:
+        """Tek bir FeC kodunun HEX değerini üretip panoya kopyalar."""
+        fsc = self._fsc_for(code)
+        if fsc is None:
+            messagebox.showwarning(
+                APP_SHORT,
+                "HEX üretilemedi. Gerekli:\n"
+                "• şase 17 karakter (veya 'VIN'siz (joker)' işaretli)\n"
+                "• VCRN 10 hex (veya DataFlash dump'ı seçili)\n"
+                "• paket anahtarı")
+            self._log(f"  ⚠ {code}: HEX üretilemedi (şase/VCRN eksik)", "warn")
+            return
+        hx = fsc.hex().upper()
+        self._copy_text(hx)
+        self._log(f"  ✔ FeC {code} HEX kopyalandı ({len(hx)} karakter) · "
+                  f"adaptasyon alanına yapıştır", "ok")
+        self._set_lbl("43", f"✔ FeC {code} HEX panoda ({len(hx)} karakter)", True)
 
     def _adapt_values(self) -> dict[str, str]:
         """Seçili kodlar için adaptasyon (Transfer SWaP) HEX değerlerini üretir."""
