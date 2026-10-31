@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "1.4"
+APP_VERSION = "2.0"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -48,9 +48,30 @@ APP_DIR = Path(sys.executable).resolve().parent if FROZEN else HERE
 ENGINE_BUNDLED = ASSET_DIR.parent / "motor"
 ENGINE_FILE = "conti_cp_tool.py"
 CFG_PATH = APP_DIR / "studyo_ayarlar.json"
-# Kalıcı anahtar kasası: uygulama klasörü yenilense bile anahtar kaybolmaz
-KEY_DIR = Path.home() / "Documents" / "DenizliGaraj-Anahtarlar"
-KEY_DEFAULT = KEY_DIR / "swap_rsa1024.json"
+# Pakete gömülü anahtar (RSA-1024, e=3) — kullanıcı anahtar üretmez/seçmez
+KEY_BUNDLED = ASSET_DIR / "anahtar" / "swap_rsa1024.json"
+
+
+def bundled_key() -> Path | None:
+    """Paketle gelen anahtarın yolunu döndürür (exe içinde: _MEIPASS/assets/anahtar)."""
+    for c in (KEY_BUNDLED, HERE / "assets" / "anahtar" / "swap_rsa1024.json",
+              APP_DIR / "anahtar" / "swap_rsa1024.json"):
+        if c.is_file():
+            return c
+    return None
+
+
+def bundled_modulus() -> str:
+    """Gömülü anahtarın modulus N'sini kısa hex olarak döndürür."""
+    p = bundled_key()
+    if p is None:
+        return "—"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        n = data.get("n_hex", "")
+        return n[:24] + "…" if n else "—"
+    except (OSError, ValueError):
+        return "—"
 
 CFLASH_SIZES = {1_523_200, 1_572_864}
 DFLASH_SIZE = 65_536
@@ -574,42 +595,27 @@ class Studio(tk.Frame):
         f.columnconfigure(0, weight=1)
         f.columnconfigure(1, weight=1)
 
-        # 4a anahtar üretimi
-        k = ttk.LabelFrame(f, text=" 4.1 · RSA-1024 (e=3) anahtar üret ", padding=8)
+        # 4a paket anahtarı (üretim yok)
+        k = ttk.LabelFrame(f, text=" 4.1 · Anahtar (pakete gömülü, RSA-1024 e=3) ", padding=8)
         k.grid(row=0, column=0, columnspan=2, sticky="ew")
-        k.columnconfigure(1, weight=1)
-        self.v_keyout = tk.StringVar(value=str(KEY_DEFAULT))
-        ttk.Label(k, text="Kayıt yolu").grid(row=0, column=0, sticky="w")
-        e = ttk.Entry(k, textvariable=self.v_keyout)
-        e.grid(row=0, column=1, sticky="ew", padx=4)
-        tip(e, "Üretilen anahtarın yolu. Kalıcı kasa: Belgeler\\DenizliGaraj-Anahtarlar\\swap_rsa1024.json\n"
-               "(.json + .private.pem + .public.pem). Uygulama klasörü silinse bile anahtar burada kalır.")
-        bg = ttk.Button(k, text="Üret", width=8, command=self._do_genkey)
-        bg.grid(row=0, column=2)
-        tip(bg, "Yeni RSA-1024 (açık üs e=3) anahtar çifti üretir. Bu anahtar gateway'e gömülür ve "
-                "SWaP/FeC sertifikalarını imzalamak için kullanılır. Anahtarı kaybetme — geri alınamaz.")
-        self.lbl_41 = ttk.Label(k, text="henüz anahtar üretilmedi · TEK SEFER üret, özel anahtarı sakla",
-                                foreground="#8b949e")
-        if KEY_DEFAULT.is_file():
-            self.lbl_41.configure(
-                text=f"✔ mevcut anahtar: {KEY_DEFAULT.name} · YENİDEN ÜRETME, 4.2/4.3 bunu kullanır",
-                foreground="#1f8f3d")
-        self.lbl_41.grid(row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        k.columnconfigure(0, weight=1)
+        has_key = bundled_key() is not None
+        self.lbl_41 = ttk.Label(
+            k, foreground="#1f8f3d" if has_key else "#b3261e",
+            text=(f"✔ Hazır · N = {bundled_modulus()} · 4.2 / 4.3 / 4.4 bu anahtarı kullanır "
+                  f"(üretim veya seçim gerekmez)" if has_key else "✘ Paket anahtarı bulunamadı"))
+        self.lbl_41.grid(row=0, column=0, sticky="w")
+        tip(self.lbl_41, "Pakete gömülü tek RSA-1024 (e=3) anahtar çifti. Ayrıntı: algılanan açık anahtar\n"
+                         "gateway'e yazılır (4.2), özel anahtar yalnız imza için kullanılır (4.3/4.4).\n"
+                         "Anahtar üretmen veya seçmen gerekmez.")
 
         # 4b modulus gömme
-        m = ttk.LabelFrame(f, text=" 4.2 · Kendi açık anahtarını gateway'e göm (SWaP / FBL modulus) ",
+        m = ttk.LabelFrame(f, text=" 4.2 · Açık anahtarı gateway'e göm (SWaP / FBL modulus) ",
                            padding=8)
         m.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         m.columnconfigure(1, weight=1)
-        self.v_keyin = tk.StringVar(value=str(KEY_DEFAULT) if KEY_DEFAULT.is_file() else "")
-        ttk.Label(m, text="Anahtar dosyası").grid(row=0, column=0, sticky="w")
-        e2 = ttk.Entry(m, textvariable=self.v_keyin)
-        e2.grid(row=0, column=1, sticky="ew", padx=4)
-        tip(e2, "4.1'de ürettiğin .json veya .private.pem anahtar dosyası.")
-        bk = ttk.Button(m, text="Seç", width=6, command=lambda: self._pick(self.v_keyin, "key"))
-        bk.grid(row=0, column=2)
         row = ttk.Frame(m)
-        row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        row.grid(row=0, column=0, columnspan=3, sticky="ew")
         ttk.Label(row, text="Hedef:").pack(side="left")
         self.v_target = tk.StringVar(value="swap")
         for val, txt, hint in (
@@ -669,7 +675,7 @@ class Studio(tk.Frame):
         bfs.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
         tip(bfs, "RIPEMD-160 + RSA-1024 (e=3) ile 171 baytlık VAG SWaP FSC v2 sertifikası üretir. "
                  "VCRN alanı boşsa DataFlash dump'ından okunur. Çıktı: fsc_<fec>.fsc")
-        self.lbl_43 = ttk.Label(s, text="anahtar (4.1) + FeC + VCRN gerekir",
+        self.lbl_43 = ttk.Label(s, text="FeC + VCRN gerekir (anahtar pakette gömülü)",
                                 foreground="#8b949e")
         self.lbl_43.grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
@@ -689,7 +695,7 @@ class Studio(tk.Frame):
         bod.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
         tip(bod, "SHA-1 + RSA-1024 (e=3) ile 128 baytlık imza üretir (FBL açık anahtarı senin anahtarın "
                  "olmalı). Çıktı: signature_<dosya>.bin")
-        self.lbl_44 = ttk.Label(o, text="anahtar (4.1) + firmware gerekir", foreground="#8b949e")
+        self.lbl_44 = ttk.Label(o, text="firmware gerekir (anahtar pakette gömülü)", foreground="#8b949e")
         self.lbl_44.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
     # ══════════════════════════════ 5 · REFERANS
@@ -783,8 +789,6 @@ class Studio(tk.Frame):
                     self.v_status.set(payload)
                 elif kind == "sum":
                     self.lbl_sum.configure(text=payload)
-                elif kind == "keyin":
-                    self.v_keyin.set(payload)
                 elif kind == "lbl":
                     name, text, ok = payload
                     lbl = getattr(self, f"lbl_{name}", None)
@@ -1138,46 +1142,13 @@ class Studio(tk.Frame):
 
         self._run_bg(job, "Engineering Mode uygulanıyor")
 
-    def _do_genkey(self) -> None:
-        p = Path(self.v_keyout.get().strip() or KEY_DEFAULT)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        # Üzerine yazma koruması: eski özel anahtar kaybolursa gateway'e gömülü modulus
-        # bir daha imzalanamaz (4.3/4.4 çalışmaz).
-        if p.exists() or p.with_suffix(".private.pem").exists():
-            if not messagebox.askyesno(
-                APP_TITLE,
-                f"Bu yolda zaten bir anahtar var:\n{p}\n\n"
-                "Üzerine yazarsan ESKİ ÖZEL ANAHTAR KAYBOLUR. Gateway'e daha önce bu anahtarın "
-                "public kısmı gömüldüyse (4.2), eski sertifikaları bir daha imzalayamazsın ve "
-                "yeniden 4.2 + 4.3 yapman gerekir.\n\n"
-                "Yine de yeni anahtar üretilsin mi?\n"
-                "(Hayır dersen 'Kayıt yolu' alanını değiştir — ör. swap_rsa1024_v2.json)",
-            ):
-                self._log("  anahtar üretimi iptal edildi (üzerine yazma koruması).", "warn")
-                return
-
-        def job():
-            self._log("══ RSA-1024 (e=3) anahtar üretimi ══", "head")
-            self._set_lbl("41", "üretiliyor... (birkaç saniye)", True)
-            rc, out = run_engine(["gen-rsa-key", "-o", str(p)])
-            self._log_block(out, "dim" if rc == 0 else "err")
-            if rc == 0:
-                for f in sorted(p.parent.glob(p.stem.replace(".json", "") + "*")):
-                    self._log(f"  • {f.name}  ({fmt_size(f.stat().st_size)})", "dim")
-                self._log(f"✔ anahtar üretildi: {p}", "ok")
-                self.queue.put(("keyin", str(p)))
-                self._set_lbl("41", f"✔ üretildi: {p.name} · 4.2/4.3 bu anahtarı kullanır", True)
-            else:
-                self._log(f"✘ anahtar üretilemedi (rc={rc})", "err")
-                self._set_lbl("41", f"✘ üretilemedi (rc={rc}) — günlüğe bak", False)
-
-        self._run_bg(job, "Anahtar üretiliyor (birkaç saniye)")
-
     def _do_setkey(self) -> None:
-        keyf = self._path(self.v_keyin)
+        keyf = bundled_key()
         cf, df = self._path(self.f_cflash), self._path(self.f_dflash)
-        if not self._need((keyf, "RSA anahtar dosyası (4.1 ile üret veya Seç)"),
-                          (cf or df, "CodeFlash (veya DataFlash) dump'ı")):
+        if keyf is None:
+            messagebox.showerror(APP_SHORT, "Paket anahtarı bulunamadı (assets/anahtar/swap_rsa1024.json).")
+            return
+        if not self._need((cf or df, "CodeFlash (veya DataFlash) dump'ı")):
             return
         out = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
         out.mkdir(parents=True, exist_ok=True)
@@ -1232,11 +1203,12 @@ class Studio(tk.Frame):
         self._run_bg(job, "Modulus gömülüyor")
 
     def _do_fsc(self) -> None:
-        keyf = self._path(self.v_keyin)
+        keyf = bundled_key()
         df = self._path(self.f_dflash)
         fec = self.v_fec.get().strip().lower().replace("0x", "")
         vcrn = re.sub(r"[\s:_-]", "", self.v_vcrn.get()).lower()
-        if not self._need((keyf, "RSA özel anahtarı (önce 4.1 ile üret)")):
+        if keyf is None:
+            messagebox.showerror(APP_SHORT, "Paket anahtarı bulunamadı (assets/anahtar/swap_rsa1024.json).")
             return
         if not re.fullmatch(r"[0-9a-f]{8}", fec):
             messagebox.showwarning(APP_SHORT, "FeC kodu 8 hex karakter olmalı (örn. 10000100).")
@@ -1289,9 +1261,12 @@ class Studio(tk.Frame):
         self._run_bg(job, "FSC imzalanıyor")
 
     def _do_signodx(self) -> None:
-        keyf = self._path(self.v_keyin)
+        keyf = bundled_key()
         src = self._path(self.v_odxin) or self._path(self.f_cflash)
-        if not self._need((keyf, "RSA özel anahtarı"), (src, "firmware (CodeFlash)")):
+        if keyf is None:
+            messagebox.showerror(APP_SHORT, "Paket anahtarı bulunamadı (assets/anahtar/swap_rsa1024.json).")
+            return
+        if not self._need((src, "firmware (CodeFlash)")):
             return
         out = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
         out.mkdir(parents=True, exist_ok=True)
@@ -1349,14 +1324,15 @@ def main() -> int:
         idx = sys.argv.index("--selftest")
         out = Path(sys.argv[idx + 1]) if len(sys.argv) > idx + 1 else Path(".")
         out.mkdir(parents=True, exist_ok=True)
-        lines = [f"motor: {engine_source()}", f"frozen: {FROZEN}"]
-        rc, text = run_engine(["gen-rsa-key", "-o", str(out / "t.json")])
-        lines.append(f"gen-rsa-key rc={rc}")
-        lines.append(text[-600:])
-        rc2, text2 = run_engine(["sign-fsc", "-k", str(out / "t.json"), "--fec", "10000100",
+        keyf = bundled_key()
+        lines = [f"motor: {engine_source()}", f"frozen: {FROZEN}",
+                 f"anahtar: {keyf}", f"modulus: {bundled_modulus()}",
+                 f"anahtar_var={keyf is not None}"]
+        rc2, text2 = run_engine(["sign-fsc", "-k", str(keyf or ""), "--fec", "10000100",
                                  "--vcrn", "0102030405", "--vin", "VSSZZZ5FZGR239596",
                                  "-o", str(out / "t.fsc")])
         lines.append(f"sign-fsc rc={rc2}")
+        lines.append(text2[-400:])
         fsc = out / "t.fsc"
         lines.append(f"fsc_boyut={fsc.stat().st_size if fsc.is_file() else -1}")
         if fsc.is_file():
@@ -1373,7 +1349,7 @@ def main() -> int:
                 print(report)
         except (AttributeError, ValueError, OSError):
             pass
-        return rc
+        return rc2
 
     root = tk.Tk()
     root.title(f"{APP_SHORT}  v{APP_VERSION}")
