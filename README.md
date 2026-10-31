@@ -22,12 +22,18 @@ gerekmez. Program internete **bağlanmaz**, hiçbir şey indirmez.
 | **1 · Dump İncele** | Otomatik tarama (isim + boyut doğrulaması) veya elle seçim; 12 CP bankası tablosu (`BOŞ`/`DOLU (she\|plain)`), SWaP özeti, ham rapor |
 | **2 · CP Bağla** | `patch-cflash` (hibrit KSCHUTZ kancası + App CRC-16) + `set-cp-key` (16 baytlık düz IKA); 95640 EEPROM maske atlaması, banka boşaltma |
 | **3 · Engineering Mode** | `patch-engineering` — Uflash RSA-free FBL + CCP erişimi + RAM-Loader; `--restore-stock` ile geri alma |
-| **4 · RSA & SWaP** | `gen-rsa-key` · `set-rsa-key` (SWaP/FBL/ikisi) · `sign-fsc` (VIN + **VCRN**) · `sign-odx` |
+| **4 · RSA & SWaP** | `gen-rsa-key` · `set-rsa-key` (SWaP/FBL/ikisi — **CodeFlash tek başına yeter**) · `sign-fsc` (VIN + **VCRN**) · `sign-odx` |
 | **5 · Referans** | 12 banka referans tablosu ve adım adım rehber (motorun kendi dokümanı) |
 
 Her bölümün altında **sonuç etiketi** vardır (✔ üretildi / ✘ sebep), yani ne olduğu günlüğe bakmadan
 görünür. `sign-fsc` için **VCRN zorunludur**: alanı elle doldur (10 hex, örn. `0102030405`) veya
 DataFlash dump'ı varsa **Oku** düğmesiyle DID `0x3C03` değerini çek.
+
+> [!IMPORTANT]
+> **4.2 için DataFlash şart değil, ama araçta çalışması için gerekir.** Modulus CodeFlash'a yazılır
+> (`0x02620E`, 128 bayt + App CRC-16). Çalışan bir gateway'de FSC doğrulaması modulus'u
+> **DataFlash NvM `0x7C` (`0xDB04`) önbelleğinden** okur — DataFlash da verilmezse araç yeni
+> sertifikayı reddeder. Program bunu uyarı olarak gösterir.
 
 Her düğme/alan üzerine gelindiğinde **Türkçe açıklama** gösterir.
 

@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -622,7 +622,8 @@ class Studio(tk.Frame):
         bm.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
         tip(bm, "Açık anahtarı CodeFlash'a ve DataFlash SWaP önbelleğine yazar (CRC-32 yeniden hesaplanır, "
                 "VCRN korunur). Çıktı: CodeFlash.swap.bin + DataFlash.swap.bin.")
-        self.lbl_42 = ttk.Label(m, text="CodeFlash + DataFlash dump'ı gerekir (1. sekme)",
+        self.lbl_42 = ttk.Label(m, text="CodeFlash dump'ı yeterli · DataFlash da verilirse araçtaki FSC "
+                                        "önbelleği de güncellenir",
                                 foreground="#8b949e")
         self.lbl_42.grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
@@ -1152,8 +1153,8 @@ class Studio(tk.Frame):
     def _do_setkey(self) -> None:
         keyf = self._path(self.v_keyin)
         cf, df = self._path(self.f_cflash), self._path(self.f_dflash)
-        if not self._need((keyf, "RSA anahtar dosyası"), (cf, "CodeFlash dump"),
-                          (df, "DataFlash dump")):
+        if not self._need((keyf, "RSA anahtar dosyası (4.1 ile üret veya Seç)"),
+                          (cf or df, "CodeFlash (veya DataFlash) dump'ı")):
             return
         out = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
         out.mkdir(parents=True, exist_ok=True)
@@ -1165,14 +1166,19 @@ class Studio(tk.Frame):
         def job():
             self._log(f"══ RSA modulus gömme (hedef: {target}) ══", "head")
             self._set_lbl("42", "işleniyor...", True)
-            tok = ["set-rsa-key", "-k", str(keyf),
-                   "--cflash-in", str(cf), "--cflash-out", str(cf_out),
-                   "--dflash-in", str(df), "--dflash-out", str(df_out),
-                   "--target", target]
+            tok = ["set-rsa-key", "-k", str(keyf), "--target", target]
+            if cf:
+                tok += ["--cflash-in", str(cf), "--cflash-out", str(cf_out)]
+            if df:
+                tok += ["--dflash-in", str(df), "--dflash-out", str(df_out)]
             if rsa_ignore:
                 tok.append("--ignore-input-crc")
             rc, out1 = run_engine(tok)
             self._log_block(out1, "dim" if rc == 0 else "err")
+            if not df:
+                self._log("⚠ DataFlash yazılmadı: araçta FSC doğrulaması önbellekteki modulus'u "
+                          "(DataFlash NvM 0x7C) okur — araçta çalışması için DataFlash dump'ı da ver.",
+                          "warn")
             if rc != 0:
                 hint = (" · 'Girdi CRC hatasını yok say' seçeneğini dene"
                         if "ignore-input-crc" in out1 else "")
@@ -1186,18 +1192,18 @@ class Studio(tk.Frame):
                 try:
                     if label == "CodeFlash":
                         s = eng.analyze_cflash(path.read_bytes())
-                        self.queue.put(("log", (
-                            f"  doğrulama · {label}: SWaP modulus={s.swap_rsa_mod[:16]}… · "
-                            f"CRC={'OK' if s.crc_ok else 'HATA'}", "ok")))
+                        self._log(f"  doğrulama · {label}: SWaP modulus={s.swap_rsa_mod[:16].hex()}… · "
+                                  f"CRC={'OK' if s.crc_ok else 'HATA'}", "ok")
                     else:
                         sw = eng.analyze_dflash_swap(path.read_bytes())
-                        self.queue.put(("log", (
-                            f"  doğrulama · {label}: modulus={sw.swap_rsa_mod[:16]}… · "
-                            f"VCRN={sw.vcrn or '—'} · CRC={'OK' if sw.crc_ok else 'HATA'}", "ok")))
+                        self._log(f"  doğrulama · {label}: modulus={sw.swap_rsa_mod[:16].hex()}… · "
+                                  f"VCRN={sw.vcrn or '—'} · CRC={'OK' if sw.crc_ok else 'HATA'}", "ok")
                 except Exception as exc:  # noqa: BLE001
-                    self.queue.put(("log", (f"  ⚠ {label} doğrulanamadı: {exc}", "warn")))
+                    self._log(f"  ⚠ {label} doğrulanamadı: {exc}", "warn")
             self._log(f"✔ bitti → {out}", "ok")
-            self._set_lbl("42", f"✔ CodeFlash.swap.bin + DataFlash.swap.bin · hedef {target}", True)
+            files = " + ".join(p.name for p in (cf_out, df_out) if p.is_file())
+            extra = "" if df else " · ⚠ DataFlash yazılmadı"
+            self._set_lbl("42", f"✔ {files} · hedef {target}{extra}", not df)
             self.queue.put(("status", "Modulus gömüldü."))
 
         self._run_bg(job, "Modulus gömülüyor")

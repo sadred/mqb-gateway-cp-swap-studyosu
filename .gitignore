@@ -1,7 +1,9 @@
 # derleme / ortam
 .build-venv/
 build/
+build*/
 dist/
+dist*/
 *.spec
 __pycache__/
 *.py[cod]
