@@ -32,10 +32,12 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+import references_tr
+
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.6"
+APP_VERSION = "2.7"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -305,6 +307,7 @@ class Studio(tk.Frame):
             _v.trace_add("write", lambda *_: self._save_cfg())
 
         self.after(120, self._pump)
+        self.after(150, self._ref_banks_tr)
         self.after(200, self._startup_scan)
 
     # ── yapılandırma
@@ -785,13 +788,17 @@ class Studio(tk.Frame):
         f.rowconfigure(1, weight=1)
         row = ttk.Frame(f)
         row.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        b1 = ttk.Button(row, text="12 CP bankası tablosu", command=lambda: self._ref("banks"))
+        b1 = ttk.Button(row, text="12 CP bankası", command=self._ref_banks_tr)
         b1.pack(side="left")
-        tip(b1, "Her bankanın VAG ECU adresi, modül adı, DataFlash offseti, NvM ID'si, UDS ve CAN ID'leri.")
-        b2 = ttk.Button(row, text="Adım adım rehber", command=lambda: self._ref("guide"))
+        tip(b1, "12 CP bankasının Türkçe tablosu: ECU adresi, modül adı, DataFlash offseti, "
+                "NvM ID'si, 95640 maske biti, UDS ve CP CAN ID'leri + DataFlash yerleşimi.")
+        b2 = ttk.Button(row, text="Adım adım rehber", command=self._ref_guide_tr)
         b2.pack(side="left", padx=6)
-        tip(b2, "Dump nereden okunur, IKA anahtarı nasıl bulunur, hangi sırayla yazılır — "
-                "motorun kendi adım adım rehberi.")
+        tip(b2, "Türkçe rehber: dump okuma, IKA anahtarı, CP bağlama, Engineering Mode, "
+                "SWaP/FSC üretimi ve araca yazma, NRC hataları, brick kurtarma.")
+        b3 = ttk.Button(row, text="Motorun ham raporu (EN)", command=lambda: self._ref("guide"))
+        b3.pack(side="left")
+        tip(b3, "Yama motorunun kendi İngilizce rehberi (orijinal metin, ayrıntılı teknik döküm).")
         self.txt_ref = tk.Text(f, wrap="none", font=("Consolas", 9), background="#0d1117",
                                foreground="#c9d1d9", insertbackground="#c9d1d9")
         self.txt_ref.grid(row=1, column=0, sticky="nsew")
@@ -869,6 +876,8 @@ class Studio(tk.Frame):
                     self.v_status.set(payload)
                 elif kind == "sum":
                     self.lbl_sum.configure(text=payload)
+                elif kind == "ref":
+                    self._ref_show(payload)
                 elif kind == "lbl":
                     name, text, ok = payload
                     lbl = getattr(self, f"lbl_{name}", None)
@@ -1504,14 +1513,33 @@ class Studio(tk.Frame):
 
         self._run_bg(job, "İmzalanıyor")
 
+    def _ref_show(self, text: str) -> None:
+        self.txt_ref.configure(state="normal")
+        self.txt_ref.delete("1.0", "end")
+        self.txt_ref.insert("1.0", text)
+        self.txt_ref.configure(state="disabled")
+
+    def _ref_banks_tr(self) -> None:
+        eng = get_engine()
+        if eng is None:
+            self._ref_show("Yama motoru yüklenemedi.")
+            return
+        try:
+            slots = [eng.parse_slot_selector(str(n)) for n in range(1, 13)]
+            self._ref_show(references_tr.banks_table(slots))
+        except Exception as exc:  # noqa: BLE001
+            self._ref_show(f"Banka tablosu üretilemedi: {exc}")
+        self.queue.put(("status", "Türkçe banka tablosu yüklendi."))
+
+    def _ref_guide_tr(self) -> None:
+        self._ref_show(references_tr.guide_text(bundled_modulus()))
+        self.queue.put(("status", "Türkçe rehber yüklendi."))
+
     def _ref(self, what: str) -> None:
         def job():
             rc, out = run_engine([what])
-            self.txt_ref.configure(state="normal")
-            self.txt_ref.delete("1.0", "end")
-            self.txt_ref.insert("1.0", out if out.strip() else f"(boş çıktı, rc={rc})")
-            self.txt_ref.configure(state="disabled")
-            self.queue.put(("status", "Referans yüklendi."))
+            self.queue.put(("ref", out if out.strip() else f"(boş çıktı, rc={rc})"))
+            self.queue.put(("status", "Motorun ham raporu yüklendi."))
 
         self._run_bg(job, "Referans hazırlanıyor")
 
