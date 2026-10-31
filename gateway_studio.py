@@ -35,7 +35,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.4"
+APP_VERSION = "2.5"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -736,8 +736,9 @@ class Studio(tk.Frame):
 
         bfs = ttk.Button(s, text="Seçilen SWaP'lar için FSC oluştur", command=self._do_fsc)
         bfs.grid(row=5, column=0, sticky="w", pady=(10, 0))
-        bad = ttk.Button(s, text="Transfer SWaP değeri (adaptasyon)", command=self._show_adapt_values)
+        bad = ttk.Button(s, text="Transfer SWaP HEX (kopyala)", command=self._adapt_menu)
         bad.grid(row=5, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(10, 0))
+        self.btn_adapt = bad
         tip(bad, "Adaptasyon > 'Transfer SWaP function' alanına yapıştırılacak UZUN değeri üretir.\n"
                  "Her FeC için HEX, DEC ve Base64 biçimlerini gösterir + .txt yazar.\n"
                  "HEX otomatik panoya kopyalanır; alan kabul etmezse DEC'i dene.")
@@ -963,89 +964,58 @@ class Studio(tk.Frame):
         except Exception:  # noqa: BLE001
             return None
 
-    @staticmethod
-    def _adapt_formats(fsc: bytes) -> dict[str, str]:
-        """Adaptasyon alanına yapıştırılabilecek biçimler."""
-        return {
-            "DEC": str(int.from_bytes(fsc, "big")),
-            "HEX": fsc.hex().upper(),
-            "HEX_SPACED": " ".join(f"{b:02X}" for b in fsc),
-            "0xHEX": "0x" + fsc.hex().upper(),
-            "BASE64": base64.b64encode(fsc).decode("ascii"),
-            "BYTES": ",".join(str(b) for b in fsc),
-        }
+    def _adapt_values(self) -> dict[str, str]:
+        """Seçili kodlar için adaptasyon (Transfer SWaP) HEX değerlerini üretir."""
+        codes = self._fec_codes()
+        out: dict[str, str] = {}
+        for code in codes:
+            fsc = self._fsc_for(code)
+            if fsc is not None:
+                out[code] = fsc.hex().upper()
+        return out
 
-    def _show_adapt_values(self) -> None:
-        """Transfer SWaP (adaptasyon) için uzun değeri üretir: DEC / HEX / Base64."""
+    def _write_adapt_txt(self, vals: dict[str, str]) -> None:
+        out_dir = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for code, hx in vals.items():
+                (out_dir / f"adapt_{code}.txt").write_text(hx + chr(10), encoding="utf-8")
+            self._log(f"  adaptasyon HEX dosyaları yazıldı ({len(vals)} kod) → {out_dir}", "ok")
+        except OSError as exc:
+            self._log(f"  ⚠ dosya yazılamadı: {exc}", "err")
+
+    def _adapt_menu(self) -> None:
+        """Transfer SWaP için HEX değerini kopyalama menüsü (ayrı pencere yok)."""
         codes = self._fec_codes()
         if not codes:
             messagebox.showwarning(APP_SHORT, "Önce en az bir SWaP kodu seç.")
             return
-        win = tk.Toplevel(self)
-        win.title("Transfer SWaP — adaptasyon değeri")
-        win.transient(self.master)
-        body = ttk.Frame(win, padding=10)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="Adaptasyon > 'Transfer SWaP function' alanına bu değeri yapıştır.",
-                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        ttk.Label(body, foreground="#6b6b6b", wraplength=760, justify="left",
-                  text="HEX değeri otomatik panoya kopyalandı — adaptasyon alanına yapıştır. "
-                       "Kabul etmezse DEC'i (10'luk sayı), o da olmazsa Base64'ü dene.\n"
-                       "Değer 171 baytlık FSC sertifikasının kendisidir; gateway bunu çözüp imzayı doğrular."
-                  ).pack(anchor="w", pady=(2, 8))
-
-        out_dir = Path(self.v_out.get().strip() or (APP_DIR / "cikti"))
-        produced = 0
-        for code in codes:
-            fsc = self._fsc_for(code)
-            if fsc is None:
-                ttk.Label(body, text=f"{code}: ✘ üretilemedi (şase/VCRN/anahtar eksik)",
-                          foreground="#b3261e").pack(anchor="w")
-                continue
-            fmts = self._adapt_formats(fsc)
-            produced += 1
-            row = ttk.LabelFrame(body, text=f" FeC {code} · {len(fsc)} bayt ", padding=6)
-            row.pack(fill="x", pady=3)
-            for i, key in enumerate(("HEX", "DEC", "BASE64")):
-                val = fmts[key]
-                ttk.Label(row, text=f"{key:6}", width=7).grid(row=i, column=0, sticky="w")
-                ent = ttk.Entry(row, width=64)
-                ent.insert(0, val)
-                ent.configure(state="readonly")
-                ent.grid(row=i, column=1, sticky="ew", padx=4, pady=1)
-                b = ttk.Button(row, text="Kopyala", width=9,
-                               command=lambda v=val: self._copy_text(v))
-                b.grid(row=i, column=2, sticky="w")
-            row.columnconfigure(1, weight=1)
-            # dosyaya yaz
-            try:
-                out_dir.mkdir(parents=True, exist_ok=True)
-                txt = out_dir / f"adapt_{code}.txt"
-                payload = [
-                    f"FeC {code} · 171 bayt FSC · Transfer SWaP (adaptasyon)", "",
-                    "HEX:", fmts["HEX"], "",
-                    "DEC:", fmts["DEC"], "",
-                    "HEX (bosluklu):", fmts["HEX_SPACED"], "",
-                    "0xHEX:", fmts["0xHEX"], "",
-                    "BASE64:", fmts["BASE64"], "",
-                    "BYTES:", fmts["BYTES"], "",
-                ]
-                txt.write_text(chr(10).join(payload), encoding="utf-8")
-            except OSError:
-                pass
-        foot = ttk.Frame(body)
-        foot.pack(fill="x", pady=(6, 0))
-        ttk.Button(foot, text="Kapat", command=win.destroy).pack(side="right")
-        ttk.Label(foot, foreground="#6b6b6b",
-                  text=f"{produced} değer üretildi · .txt dosyaları: {out_dir}"
-                  ).pack(side="left")
-        if produced:
-            first = self._fsc_for(codes[0])
-            if first is not None:
-                self._copy_text(first.hex().upper())
-            self._log(f"  adaptasyon değerleri üretildi ({produced} kod) → {out_dir}", "ok")
-            self._log("  ilk kodun HEX değeri panoya kopyalandı", "ok")
-        win.bind("<Escape>", lambda _e: win.destroy())
+        vals = self._adapt_values()
+        if not vals:
+            messagebox.showwarning(
+                APP_SHORT,
+                "HEX üretilemedi. Eksik olan:\n"
+                "• şase 17 karakter (veya 'VIN'siz' işaretli)\n"
+                "• VCRN 10 hex (veya DataFlash dump'ı)\n"
+                "• paket anahtarı")
+            self._log("  ⚠ adaptasyon değeri üretilemedi (şase/VCRN/anahtar)", "warn")
+            return
+        m = tk.Menu(self, tearoff=0)
+        for code, hx in vals.items():
+            m.add_command(label=f"HEX kopyala · FeC {code}  ({len(hx)} karakter)",
+                          command=lambda h=hx: self._copy_text(h))
+        if len(vals) > 1:
+            m.add_separator()
+            m.add_command(label=f"Tümünü kopyala ({len(vals)} kod, satır satır)",
+                          command=lambda: self._copy_text(chr(10).join(vals.values())))
+        m.add_separator()
+        m.add_command(label="HEX'i .txt dosyasına yaz",
+                      command=lambda: self._write_adapt_txt(vals))
+        btn = getattr(self, "btn_adapt", None) or self
+        try:
+            m.tk_popup(btn.winfo_rootx(), btn.winfo_rooty() + btn.winfo_height())
+        finally:
+            m.grab_release()
 
     def _copy_text(self, text: str) -> None:
         self.clipboard_clear()
