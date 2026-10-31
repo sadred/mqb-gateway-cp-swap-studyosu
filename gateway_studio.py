@@ -34,7 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 # ─────────────────────────────────────────────────────────────── kimlik
 APP_TITLE = "Denizli Garaj MQB Gateway CP & SWaP Stüdyo"
 APP_SHORT = "DG MQB Gateway Stüdyo"
-APP_VERSION = "2.1"
+APP_VERSION = "2.2"
 APP_SUBTITLE = ("Continental J533 · 3Q0 907 530 AC/AG/AJ/AL/AM/AN/AP/AQ/AR · RH850/F1L · "
                 "CP bağlama · Engineering Mode · RSA-1024 / SWaP")
 SOURCE_PROJECT = "mqb_contitool / PerkTheFox — https://github.com/perkthefox/mqb_contitool"
@@ -300,6 +300,9 @@ class Studio(tk.Frame):
         self._build_tabs()
         self._build_footer()
 
+        for _v in (self.v_out, self.v_vin, self.v_vcrn, self.v_fec):
+            _v.trace_add("write", lambda *_: self._save_cfg())
+
         self.after(120, self._pump)
         self.after(200, self._startup_scan)
 
@@ -311,7 +314,8 @@ class Studio(tk.Frame):
             return {}
 
     def _save_cfg(self) -> None:
-        data = {"out": self.v_out.get()}
+        data = {"out": self.v_out.get(), "vin": self.v_vin.get(),
+                "vcrn": self.v_vcrn.get(), "fec_extra": self.v_fec.get()}
         try:
             CFG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except OSError:
@@ -384,6 +388,35 @@ class Studio(tk.Frame):
                                       initialdir=str(APP_DIR))
         if p:
             var.set(p)
+
+    def _make_scrollable(self, parent: tk.Widget) -> ttk.Frame:
+        """Uzun sekmeler için dikey kaydırmalı iç çerçeve döndürür."""
+        canvas = tk.Canvas(parent, highlightthickness=0, borderwidth=0)
+        vsb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        win = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+
+        def _fit(event):
+            canvas.itemconfigure(win, width=event.width)
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", _fit)
+        inner.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        state = {"on": False}
+        canvas.bind("<Enter>", lambda _e: state.__setitem__("on", True), add="+")
+        canvas.bind("<Leave>", lambda _e: state.__setitem__("on", False), add="+")
+
+        def _wheel(event):
+            if state["on"]:
+                canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        canvas.bind_all("<MouseWheel>", _wheel, add="+")
+        return inner
 
     # ══════════════════════════════ 1 · DUMP İNCELE
     def _build_inspect(self) -> None:
@@ -591,7 +624,7 @@ class Studio(tk.Frame):
 
     # ══════════════════════════════ 4 · RSA & SWaP
     def _build_rsa(self) -> None:
-        f = self.tab_rsa
+        f = self._make_scrollable(self.tab_rsa)
         f.columnconfigure(0, weight=1)
         f.columnconfigure(1, weight=1)
 
@@ -643,50 +676,75 @@ class Studio(tk.Frame):
                                 foreground="#8b949e")
         self.lbl_42.grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
-        # 4c FSC imzalama
-        s = ttk.LabelFrame(f, text=" 4.2 · SWaP / FeC (FSC) sertifikası imzala ", padding=8)
-        s.grid(row=2, column=0, sticky="nsew", pady=(8, 0), padx=(0, 6))
+        # 4.2 SWaP seçimi + FSC (şase + VCRN kullanıcıdan)
+        s = ttk.LabelFrame(f, text=" 4.2 · SWaP seç ve FSC oluştur (şase + VCRN) ", padding=8)
+        s.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
         s.columnconfigure(1, weight=1)
-        self.v_fec = tk.StringVar(value="10000100")
-        self.v_vin = tk.StringVar()
-        ttk.Label(s, text="FeC kodu").grid(row=0, column=0, sticky="w")
-        ef = ttk.Entry(s, textvariable=self.v_fec, width=16)
-        ef.grid(row=0, column=1, sticky="w", padx=4)
-        tip(ef, "4 baytlık FeC kodu (hex). Birden fazla kod yazabilirsin: virgül veya boşlukla ayır\n"
-                "(örn. 10000100, 10000300, 10001800). Her kod için ayrı .fsc üretilir.\n"
-                "10000100 = FPA sürüş profili · 10000300 = MKE sürücü uyarı · 10001800 = MKB çoklu çarpışma")
-        bfec = ttk.Button(s, text="Seç...", width=7, command=self._pick_fecs)
-        bfec.grid(row=0, column=2, sticky="w")
-        tip(bfec, "Bilinen 13 FeC kodunu isimleriyle listeler; birden fazlasını işaretleyip alana ekler.")
-        ttk.Label(s, text="VIN").grid(row=1, column=0, sticky="w")
-        ev = ttk.Entry(s, textvariable=self.v_vin, width=20)
-        ev.grid(row=1, column=1, sticky="w", padx=4)
-        tip(ev, "17 karakterlik şasi numarası. Boş bırakılırsa sertifika VIN'siz (joker) üretilir.")
-        self.v_novin = tk.BooleanVar(value=False)
-        cbv = ttk.Checkbutton(s, text="VIN alanını sıfırla (joker)", variable=self.v_novin)
-        cbv.grid(row=3, column=1, sticky="w", padx=4)
-        tip(cbv, "Sertifikadaki 18 baytlık VIN alanını tamamen sıfırlar; sertifika her araçta geçerli olur.")
-        ttk.Label(s, text="VCRN").grid(row=2, column=0, sticky="w")
-        self.v_vcrn = tk.StringVar()
-        evc = ttk.Entry(s, textvariable=self.v_vcrn, width=16)
-        evc.grid(row=2, column=1, sticky="w", padx=4)
-        tip(evc, "Gateway'in 5 baytlık VCRN'i (10 hex karakter, örn. 01 02 03 04 05). Sertifikaya gömülür ve "
-                 "araca özeldir; yanlış VCRN ile sertifika araçta geçersiz olur.\n"
-                 "DataFlash dump'ı varsa 'Oku' düğmesi DID 0x3C03 değerini oradan çıkarır.")
-        bv = ttk.Button(s, text="Oku", width=6, command=self._read_vcrn)
-        bv.grid(row=2, column=2, sticky="w")
-        tip(bv, "DataFlash dump'ındaki SWaP önbelleğinden VCRN'i okur (offset 0xDC0C).")
-        bfs = ttk.Button(s, text="FSC imzala", command=self._do_fsc)
-        bfs.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        tip(bfs, "RIPEMD-160 + RSA-1024 (e=3) ile 171 baytlık VAG SWaP FSC v2 sertifikası üretir. "
-                 "VCRN alanı boşsa DataFlash dump'ından okunur. Çıktı: fsc_<fec>.fsc")
-        self.lbl_43 = ttk.Label(s, text="FeC + VCRN gerekir (anahtar pakette gömülü)",
-                                foreground="#8b949e")
-        self.lbl_43.grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
-        # 4d ODX imzalama
+        ttk.Label(s, text="Şase (VIN)").grid(row=0, column=0, sticky="w")
+        self.v_vin = tk.StringVar(value=str(self.cfg.get("vin", "")))
+        ev = ttk.Entry(s, textvariable=self.v_vin, width=22)
+        ev.grid(row=0, column=1, sticky="w", padx=4)
+        tip(ev, "17 karakterlik şasi numarası (örn. VSSZZZ5FZGR239596). Sertifikaya gömülür; "
+                "boş bırakılırsa 'joker' (VIN'siz) sertifika üretilir.")
+        self.v_novin = tk.BooleanVar(value=False)
+        cbv = ttk.Checkbutton(s, text="VIN'siz (joker)", variable=self.v_novin)
+        cbv.grid(row=0, column=2, sticky="w")
+        tip(cbv, "Sertifikadaki VIN alanını sıfırlar; sertifika VIN kontrolü olmadan geçerli olur.")
+
+        ttk.Label(s, text="VCRN").grid(row=1, column=0, sticky="w")
+        self.v_vcrn = tk.StringVar(value=str(self.cfg.get("vcrn", "")))
+        evc = ttk.Entry(s, textvariable=self.v_vcrn, width=22)
+        evc.grid(row=1, column=1, sticky="w", padx=4)
+        tip(evc, "Gateway'in 5 baytlık VCRN'i = 10 hex karakter (örn. 0102030405).\n"
+                 "DID 0x3C03 ile okunur; sertifika yalnız bu VCRN'e sahip araçta geçerli olur.")
+        bv = ttk.Button(s, text="DataFlash'tan oku", command=self._read_vcrn)
+        bv.grid(row=1, column=2, sticky="w")
+        tip(bv, "DataFlash dump'ı seçiliyse VCRN'i SWaP önbelleğinden (0xDC0C) okur.")
+
+        # --- SWaP (FeC) seçimi
+        ttk.Label(s, text="SWaP seçimi", font=("Segoe UI", 9, "bold")).grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(8, 2))
+        grid = ttk.Frame(s)
+        grid.grid(row=3, column=0, columnspan=3, sticky="ew")
+        self.fec_vars: dict[str, tk.BooleanVar] = {}
+        eng0 = get_engine()
+        table = getattr(eng0, "KNOWN_GATEWAY_FECS", {}) if eng0 else {}
+        names_tr = {
+            "10000100": "Sürüş profili seçimi (FPA)",
+            "10000200": "Genişletilmiş FPA",
+            "10000300": "Sürücü uyarı / yorgunluk (MKE)",
+            "10001100": "Enerji yönetimi / rejenerasyon",
+            "10001800": "Çoklu çarpışma freni (MKB)",
+        }
+        for i, code in enumerate(sorted(table)):
+            hx = f"{code:08x}"
+            var = tk.BooleanVar(value=False)
+            self.fec_vars[hx] = var
+            label = names_tr.get(hx, f"Gateway SWaP {hx[-4:].upper()}")
+            cb = ttk.Checkbutton(grid, text=f"{hx} · {label}", variable=var)
+            cb.grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 14), pady=1)
+            tip(cb, f"FeC 0x{code:08X} — {table[code][1]}\nİşaretlersen bu kod için ayrı .fsc dosyası üretilir.")
+        # özel kod
+        ttk.Label(s, text="Özel kod(lar)").grid(row=4, column=0, sticky="w", pady=(6, 0))
+        self.v_fec = tk.StringVar(value=str(self.cfg.get("fec_extra", "")))
+        ef = ttk.Entry(s, textvariable=self.v_fec, width=30)
+        ef.grid(row=4, column=1, sticky="w", padx=4, pady=(6, 0))
+        tip(ef, "Listede olmayan FeC kodları: 8 hex, virgül/boşlukla ayır (örn. 10001600, 10001700).\n"
+                "Buraya yazılanlar işaretli kodlarla birlikte imzalanır.")
+
+        bfs = ttk.Button(s, text="Seçilen SWaP'lar için FSC oluştur", command=self._do_fsc)
+        bfs.grid(row=5, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        tip(bfs, "İşaretlediğin her SWaP kodu için 171 baytlık SWaP/FeC sertifikası üretir "
+                 "(RIPEMD-160 + RSA-1024 e=3, paket anahtarıyla).\n"
+                 "Çıktı: fsc_<kod>.fsc — OBD'den 2E 3C 01 + 31 01 C0 01 ile yüklenir.")
+        self.lbl_43 = ttk.Label(s, text="şase + VCRN + en az bir SWaP kodu seç",
+                                foreground="#8b949e")
+        self.lbl_43.grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
+        # 4.3 firmware imzası
         o = ttk.LabelFrame(f, text=" 4.3 · Firmware (.odx) imzala — <FW-SIGNATURE> ", padding=8)
-        o.grid(row=2, column=1, sticky="nsew", pady=(8, 0))
+        o.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         o.columnconfigure(1, weight=1)
         self.v_odxin = tk.StringVar()
         ttk.Label(o, text="Firmware").grid(row=0, column=0, sticky="w")
@@ -694,7 +752,7 @@ class Studio(tk.Frame):
         eo.grid(row=0, column=1, sticky="ew", padx=4)
         tip(eo, "İmzalanacak CodeFlash.bin veya FD_0DATA (1.523.200 B) dosyası. 0. sekmedeki CodeFlash "
                 "kullanılacaksa boş bırak.")
-        bo = ttk.Button(o, text="Seç", width=6, command=lambda: self._pick(self.v_odxin, "cflash"))
+        bo = ttk.Button(o, text="Seç...", width=8, command=lambda: self._pick(self.v_odxin, "cflash"))
         bo.grid(row=0, column=2)
         bod = ttk.Button(o, text="İmzala", command=self._do_signodx)
         bod.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
@@ -864,53 +922,10 @@ class Studio(tk.Frame):
         self.clipboard_append(n)
         self._log(f"  public key panoya kopyalandı ({len(n)} hex karakter) · N = {n[:24]}…", "ok")
 
-    def _pick_fecs(self) -> None:
-        """Bilinen FeC kodlarını çoklu seçimle alana ekler."""
-        eng = get_engine()
-        table = getattr(eng, "KNOWN_GATEWAY_FECS", {}) if eng else {}
-        if not table:
-            messagebox.showwarning(APP_SHORT, "FeC tablosu motordan okunamadı.")
-            return
-        win = tk.Toplevel(self)
-        win.title("FeC kodu seç (birden fazla işaretleyebilirsin)")
-        win.transient(self.master)
-        win.resizable(False, False)
-        body = ttk.Frame(win, padding=10)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="Gateway'in bilinen 13 SWaP/FeC kodu:", font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        vars_: dict[str, tk.BooleanVar] = {}
-        grid = ttk.Frame(body)
-        grid.pack(fill="both", expand=True, pady=(6, 8))
-        current = set(self._fec_codes())
-        for i, (code, names) in enumerate(sorted(table.items())):
-            hx = f"{code:08x}"
-            v = tk.BooleanVar(value=hx in current)
-            vars_[hx] = v
-            cb = ttk.Checkbutton(grid, text=f"{hx}  ·  {names[1]}", variable=v)
-            cb.grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 18), pady=1)
-            tip(cb, f"FeC 0x{code:08X}\n{names[0]}\n{names[1]}")
-        btns = ttk.Frame(body)
-        btns.pack(fill="x")
-
-        def apply_and_close():
-            codes = [c for c, v in vars_.items() if v.get()]
-            if codes:
-                self.v_fec.set(", ".join(codes))
-                self._set_lbl("43", f"{len(codes)} FeC seçildi — 'FSC imzala' ile her biri için .fsc üretilir", True)
-            win.destroy()
-
-        ok = ttk.Button(btns, text="Seç ve kapat", command=apply_and_close)
-        ok.pack(side="left")
-        ttk.Button(btns, text="Vazgeç", command=win.destroy).pack(side="left", padx=6)
-        tip(ok, "İşaretli kodları FeC alanına virgülle yazar; imzalama her kod için ayrı dosya üretir.")
-        win.bind("<Escape>", lambda _e: win.destroy())
-        win.grab_set()
-
     def _fec_codes(self) -> list[str]:
-        """FeC alanındaki kodları (virgül/boşluk karışık) sırayla döndürür."""
-        raw = self.v_fec.get()
-        codes: list[str] = []
-        for m in re.findall(r"(?:0x)?([0-9a-fA-F]{8})", raw):
+        """İşaretli SWaP kodları + özel alandaki kodlar (sıra korunur)."""
+        codes: list[str] = [c for c, v in getattr(self, "fec_vars", {}).items() if v.get()]
+        for m in re.findall(r"(?:0x)?([0-9a-fA-F]{8})", self.v_fec.get()):
             c = m.lower()
             if c not in codes:
                 codes.append(c)
@@ -1450,7 +1465,6 @@ def main() -> int:
     except tk.TclError:
         pass
     app = Studio(root)
-    app.v_out.trace_add("write", lambda *_: app._save_cfg())
     root.mainloop()
     return 0
 

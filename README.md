@@ -22,7 +22,7 @@ gerekmez. Program internete **bağlanmaz**, hiçbir şey indirmez.
 | **1 · Dump İncele** | Otomatik tarama (isim + boyut doğrulaması) veya elle seçim; 12 CP bankası tablosu (`BOŞ`/`DOLU (she\|plain)`), SWaP özeti, ham rapor |
 | **2 · CP Bağla** | `patch-cflash` (hibrit KSCHUTZ kancası + App CRC-16) + `set-cp-key` (16 baytlık düz IKA); 95640 EEPROM maske atlaması, banka boşaltma |
 | **3 · Engineering Mode** | `patch-engineering` — Uflash RSA-free FBL + CCP erişimi + RAM-Loader; `--restore-stock` ile geri alma |
-| **4 · RSA & SWaP** | Üstte **public key** satırı (kopyalanabilir) · **4.1** `set-rsa-key` (SWaP/FBL/ikisi — CodeFlash tek başına yeter) · **4.2** `sign-fsc` (VIN + **VCRN**, **çoklu FeC**) · **4.3** `sign-odx` |
+| **4 · RSA & SWaP** | Üstte **public key** satırı (kopyalanabilir) · **4.1** açık anahtarı göm (SWaP/FBL/ikisi) · **4.2** **SWaP seç + FSC oluştur** (şase + VCRN + işaretli SWaP kodları) · **4.3** firmware imzası |
 | **5 · Referans** | 12 banka referans tablosu ve adım adım rehber (motorun kendi dokümanı) |
 
 > [!IMPORTANT]
@@ -38,8 +38,9 @@ Her bölümün altında **sonuç etiketi** vardır (✔ üretildi / ✘ sebep), 
 görünür. `sign-fsc` için **VCRN zorunludur**: alanı elle doldur (10 hex, örn. `0102030405`) veya
 DataFlash dump'ı varsa **Oku** düğmesiyle DID `0x3C03` değerini çek.
 
-**Çoklu FeC:** FeC alanına virgül/boşlukla birden fazla kod yazabilirsin (`10000100, 10000300, 10001800`)
-veya **Seç...** düğmesiyle bilinen 13 kodu işaretleyebilirsin → her kod için ayrı `fsc_<kod>.fsc` üretilir.
+**4.2 akışı:** şase (VIN) + VCRN gir → istediğin SWaP kodlarını **işaretle** (14 bilinen kod, Türkçe adlarıyla)
+veya `Özel kod(lar)` alanına virgülle yaz → **"Seçilen SWaP'lar için FSC oluştur"**. Her kod için ayrı
+`fsc_<kod>.fsc` üretilir. Şase/VCRN bir sonraki açılışta hatırlanır; gerekirse VCRN **DataFlash'tan oku** ile çekilir.
 
 > [!IMPORTANT]
 > **4.2 için DataFlash şart değil, ama araçta çalışması için gerekir.** Modulus CodeFlash'a yazılır
